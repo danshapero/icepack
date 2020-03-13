@@ -94,6 +94,15 @@ def fetch_bedmachine_antarctica():
     )
 
 
+def fetch_bedmachine_greenland():
+    r"""Fetch the BedMachine map of Greenland ice thickness, surface elevation,
+    and bed elevation"""
+    return nsidc_data.fetch(
+        'BedMachineGreenland-2017-09-20.nc',
+        downloader=_earthdata_downloader
+    )
+
+
 outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes/"
 outlines_commit = "c98a8b7536b1891611566257d944e5ea024f2cdf"
 outlines = pooch.create(
@@ -138,4 +147,11 @@ def fetch_mosaic_of_antarctica():
         "moa750_2009_hp1_v01.1.tif.gz",
         downloader=_earthdata_downloader,
         processor=pooch.Decompress(),
+    )
+
+
+def fetch_mosaic_of_greenland():
+    r"""Fetch the MODIS optimal image mosaic of Greenland"""
+    return nsidc_data.fetch(
+        'mog100_2015_hp1_v02.tif', downloader=_earthdata_downloader
     )
