@@ -99,7 +99,7 @@ def fetch_bedmachine_antarctica():
 
 
 outlines_url = 'https://raw.githubusercontent.com/icepack/glacier-meshes/'
-outlines_commit = 'a522188dadb9ba49d4848ba66cab8c90f9fda5d9'
+outlines_commit = '8094e6e2445324b911d9a9edd9868961c563b3da'
 larsen_outline = pooch.create(
     path=pooch.os_cache('icepack'),
     base_url=outlines_url + outlines_commit + '/glaciers/',
@@ -114,6 +114,22 @@ def fetch_larsen_outline():
     r"""Fetch an outline of the Larsen C Ice Shelf"""
     downloader = pooch.HTTPDownloader(progressbar=True)
     return larsen_outline.fetch('larsen.geojson', downloader=downloader)
+
+
+pine_island_outline = pooch.create(
+    path=pooch.os_cache('icepack'),
+    base_url=outlines_url + outlines_commit + '/glaciers/',
+    registry={
+        'pine-island.geojson':
+        '6acde4ff52cdbaebd75b73547af0cb5dd38267fd3055c0093698949e45338609'
+    }
+)
+
+
+def fetch_pine_island_outline():
+    return pine_island_outline.fetch(
+        'pine-island.geojson', downloader=pooch.HTTPDownloader(progressbar=True)
+    )
 
 
 def fetch_mosaic_of_antarctica():
