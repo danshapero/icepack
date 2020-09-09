@@ -1,7 +1,7 @@
 # Copyright 2020 Daniel Shapero
 
 import firedrake
-from firedrake import assemble, Constant, inner, det, grad, div, dx, ds
+from firedrake import assemble, Constant, dot, inner, det, grad, div, dx, ds
 
 def solve_monge_ampere(monitor, time=1., timestep=1.):
     r"""Approximately solve the Monge-Ampere equation for some positive monitor
@@ -28,7 +28,7 @@ def solve_monge_ampere(monitor, time=1., timestep=1.):
     F_φ = (inner(grad(φ - φ_0), grad(ψ)) - δt * (f - μ) * ψ) * dx
     F_σ = (
         (inner(σ, τ) + inner(div(τ), grad(φ))) * dx -
-        (τ[0, 1] * n[1] * φ.dx(0) + τ[1, 0] * n[0] * φ.dx(1)) * ds
+        inner(dot(τ, n), grad(φ)) * ds
     )
 
     parameters = {
