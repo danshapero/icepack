@@ -99,7 +99,7 @@ def fetch_bedmachine_antarctica():
 
 
 outlines_url = 'https://raw.githubusercontent.com/icepack/glacier-meshes/'
-outlines_commit = '8094e6e2445324b911d9a9edd9868961c563b3da'
+outlines_commit = '8a41399ed7b49e06fcda2a298d404613e979280e'
 larsen_outline = pooch.create(
     path=pooch.os_cache('icepack'),
     base_url=outlines_url + outlines_commit + '/glaciers/',
@@ -121,7 +121,7 @@ pine_island_outline = pooch.create(
     base_url=outlines_url + outlines_commit + '/glaciers/',
     registry={
         'pine-island.geojson':
-        '6acde4ff52cdbaebd75b73547af0cb5dd38267fd3055c0093698949e45338609'
+        '17200760275d19636c89ab4458c0efed957bc740747ce0e9d3113af6e2d8a380'
     }
 )
 
