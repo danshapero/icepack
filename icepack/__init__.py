@@ -14,7 +14,7 @@ from icepack.norms import norm
 from icepack.interpolate import interpolate
 from icepack.utilities import depth_average, lift3d, compute_surface
 from icepack.models.viscosity import rate_factor
-from icepack.adaptivity import adapt
+import icepack.adaptivity
 import icepack.meshing
 import icepack.datasets
 import icepack.models
