@@ -18,7 +18,7 @@ crystal fabric evolves under sustained strain.
 
 from operator import itemgetter
 import firedrake
-from firedrake import inner, grad, div, dx, ds, dS, min_value, max_value
+from firedrake import inner, outer, grad, div, dx, ds, dS, min_value, max_value
 
 
 class FabricTransport:
@@ -30,21 +30,21 @@ class FabricTransport:
         pass
 
     def flux(self, **kwargs):
-        keys = ("fabric, velocity", "fabric_inflow")  # Other fields if need be
+        keys = ("fabric", "velocity", "fabric_inflow")  # Other fields if need be
         f, u, f_inflow = itemgetter(*keys)(kwargs)
 
         S = f.function_space()
         φ = firedrake.TestFunction(S)
 
         mesh = S.mesh()
-        n = firedrake.FacetNormal(mehs)
+        n = firedrake.FacetNormal(mesh)
 
         u_n = max_value(0, inner(u, n))
         F = f * u_n
         flux_faces = inner(F("+") - F("-"), φ("+") - φ("-")) * dS
-        flux_cells = -inner(f, div(u * φ)) * dx  # <- this is wrong
-        flux_out = inner(f, max_value(0, inner(u, n) * φ)) * ds
-        flux_in = inner(f_inflow, min_value(0, inner(u, n) * φ)) * ds
+        flux_cells = -inner(f, div(outer(u, φ))) * dx  # <- this is wrong
+        flux_out = inner(f, max_value(0, inner(u, n)) * φ) * ds
+        flux_in = inner(f_inflow, min_value(0, inner(u, n)) * φ) * ds
 
         return flux_faces + flux_cells + flux_out + flux_in
 

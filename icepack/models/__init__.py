@@ -10,18 +10,20 @@
 # The full text of the license can be found in the file LICENSE in the
 # icepack source directory or at <http://www.gnu.org/licenses/>.
 
+from icepack.models.shallow_ice import ShallowIce
 from icepack.models.ice_shelf import IceShelf
 from icepack.models.ice_stream import IceStream
 from icepack.models.hybrid import HybridModel
 from icepack.models.damage_transport import DamageTransport
 from icepack.models.heat_transport import HeatTransport3D
-from icepack.models.shallow_ice import ShallowIce
+from icepack.models.fabric import FabricTransport
 
 __all__ = [
+    "ShallowIce",
     "IceShelf",
     "IceStream",
     "HybridModel",
     "DamageTransport",
     "HeatTransport3D",
-    "ShallowIce",
+    "FabricTransport",
 ]
