@@ -119,3 +119,48 @@ class HeatTransport3D:
         r"""Return the energy density for ice at the given temperature and melt
         fraction"""
         return ρ_I * c * T + ρ_I * L * f
+
+
+class HeatTransport2D:
+    r"""Class for modeling 2D heat transport
+
+    This class solves the 2D advection equation for the depth-averaged energy
+    density. The energy density factors in both the temperature and the latent
+    heat included in meltwater. We use the energy density rather than the
+    enthalpy because it comes out to a nice round number (about 500 MPa/m^3)
+    in the unit system we use.
+
+    This model is very rough and ignores all vertical heat transport through
+    the ice column. It accounts for horizontal advection, bulk forcing at the
+    surface and bed, and strain heating.
+    """
+
+    def __init__(self, surface_exchange_coefficient=9):
+        self.surface_exchange_coefficient = surface_exchange_coefficient
+
+    def advective_flux(self, **kwargs):
+        keys = (
+            "energy",
+            "velocity",
+            "thickness",
+            "energy_ingflow",
+        )
+
+        E, u, h, E_inflow = itemgetter(*keys)(kwargs)
+
+        Q = E.function_space()
+        ψ = firedrake.TestFunction(Q)
+
+        # Miracle occurs...
+
+    def sources(self, **kwargs):
+        keys = ("energy", "thickness", "heat", "heat_bed")
+        E, h, q, q_bed = itemgetter(*keys)(kwargs)
+
+        Q = E.function_space()
+        ψ = firedrake.TestFunction(Q)
+
+        internal_sources = q * ψ * h * dx
+        bed_sources = q_bed * ψ * dx
+
+        return internal_sources + boundary_sources
