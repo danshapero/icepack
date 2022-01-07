@@ -58,9 +58,9 @@ class HeatTransport3D:
         Q = E.function_space()
         ψ = firedrake.TestFunction(Q)
 
-        # NOTE: Be careful here going to xz! You might have to separate this into
-        # the sum of a horizontal and vertical flux if we're shadowing Firedrake's
-        # grad operator with out own specialized one.
+        # NOTE: Be careful here going to xz! You might have to separate this
+        # into the sum of a horizontal and vertical flux if we're shadowing
+        # Firedrake's grad operator with out own specialized one.
         U = firedrake.as_vector((u[0], u[1], w))
         flux_cells = -E * inner(U, grad(ψ)) * h * dx
 
