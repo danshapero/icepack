@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2020 by Daniel Shapero <shapero@uw.edu>
+# Copyright (C) 2019-2021 by Daniel Shapero <shapero@uw.edu>
 #
 # This file is part of icepack.
 #
@@ -224,3 +224,37 @@ def test_strain_heating():
         E_0 = solver_no_strain.solve(dt, energy=E_0, heat=Constant(0), **fields)
 
     assert assemble(E_q * h * dx) > assemble(E_0 * h * dx)
+
+
+def test_2d_heat_transport():
+    Q2D = firedrake.FunctionSpace(mesh2d, "CG", 1)
+    x, y = firedrake.SpatialCoordinate(mesh2d)
+    h = firedrake.interpolate(h0 - dh * x / Lx, Q2D)
+    E_initial = firedrake.interpolate(E_surface + 0.5 * q_bed / α * h, Q2D)
+    E = E_initial.copy(deepcopy=True)
+
+    u0 = 100.0
+    du = 100.0
+    u_expr = as_vector((u0 + du * x / Lx, 0))
+    V2D = firedrake.VectorFunctionSpace(mesh2d, "CG", 1)
+    u = firedrake.interpolate(u_expr, V2D)
+
+    print(E.dat.data_ro[:].max())
+
+    dt = 10.0
+    final_time = Lx / u0
+    num_steps = int(final_time / dt) + 1
+    model = icepack.models.HeatTransport2D()
+    solver = icepack.solvers.HeatTransportSolver(model)
+    for step in range(num_steps):
+        E = solver.solve(
+            dt,
+            energy=E,
+            velocity=u,
+            thickness=h,
+            heat=Constant(0.0),
+            heat_bed=Constant(q_bed),
+            energy_inflow=E_initial,
+        )
+
+    print(E.dat.data_ro[:].max())
