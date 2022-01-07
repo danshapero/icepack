@@ -1,4 +1,4 @@
-# Copyright (C) 2017-2019 by Daniel Shapero <shapero@uw.edu>
+# Copyright (C) 2017-2021 by Daniel Shapero <shapero@uw.edu>
 #
 # This file is part of icepack.
 #
@@ -14,7 +14,7 @@ from icepack.models.ice_shelf import IceShelf
 from icepack.models.ice_stream import IceStream
 from icepack.models.hybrid import HybridModel
 from icepack.models.damage_transport import DamageTransport
-from icepack.models.heat_transport import HeatTransport3D
+from icepack.models.heat_transport import HeatTransport2D, HeatTransport3D
 from icepack.models.shallow_ice import ShallowIce
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "IceStream",
     "HybridModel",
     "DamageTransport",
+    "HeatTransport2D",
     "HeatTransport3D",
     "ShallowIce",
 ]

@@ -54,6 +54,7 @@ class HeatTransportSolver:
 
         aflux = self.model.advective_flux(**self.fields)
         dflux = self.model.diffusive_flux(**self.fields)
+
         sources = self.model.sources(**self.fields)
         dE_dt = sources - aflux - dflux
         E, h = itemgetter("energy", "thickness")(self.fields)
@@ -62,7 +63,12 @@ class HeatTransportSolver:
         F = (E - E_0) * ψ * h * dx - dt * dE_dt
 
         degree = E.ufl_element().degree()
-        fc_params = {"quadrature_degree": (3 * degree[0], 2 * degree[1])}
+
+        if isinstance(degree, tuple):
+            fc_params = {"quadrature_degree": (3 * degree[0], 2 * degree[1])}
+        else:
+            fc_params = {"quadrature_degree": 3 * degree}
+
         problem = firedrake.NonlinearVariationalProblem(
             F, E, form_compiler_parameters=fc_params
         )

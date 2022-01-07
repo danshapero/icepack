@@ -12,7 +12,7 @@
 
 from operator import itemgetter
 import firedrake
-from firedrake import inner, grad, dx, ds_b, ds_t, ds_v
+from firedrake import inner, grad, div, dx, ds, ds_b, ds_t, ds_v
 from icepack.constants import (
     ice_density as ρ_I,
     thermal_diffusivity as α,
@@ -143,7 +143,7 @@ class HeatTransport2D:
             "energy",
             "velocity",
             "thickness",
-            "energy_ingflow",
+            "energy_inflow",
         )
 
         E, u, h, E_inflow = itemgetter(*keys)(kwargs)
@@ -151,7 +151,18 @@ class HeatTransport2D:
         Q = E.function_space()
         ψ = firedrake.TestFunction(Q)
 
-        # Miracle occurs...
+        flux_cells = -h * E * div(ψ * u) * dx
+
+        ν = FacetNormal(Q.mesh())
+        outflow = firedrake.max_value(inner(u, ν), 0)
+        inflow = firedrake.min_value(inner(u, ν), 0)
+        flux_outflow = E * outflow * ψ * h * ds
+        flux_inflow = E_inflow * inflow * ψ * h * ds
+
+        return flux_cells + flux_outflow + flux_inflow
+
+    def diffusive_flux(self, **kwargs):
+        return 0.0
 
     def sources(self, **kwargs):
         keys = ("energy", "thickness", "heat", "heat_bed")
@@ -161,6 +172,6 @@ class HeatTransport2D:
         ψ = firedrake.TestFunction(Q)
 
         internal_sources = q * ψ * h * dx
-        bed_sources = q_bed * ψ * dx
+        boundary_sources = q_bed * ψ * dx
 
         return internal_sources + boundary_sources
