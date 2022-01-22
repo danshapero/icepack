@@ -19,35 +19,42 @@ from icepack.constants import year, thermal_diffusivity as α, melting_temperatu
 from icepack.models.hybrid import horizontal_strain_rate, vertical_strain_rate, stresses
 
 
-# Using the same mesh and data for every test case.
-Nx, Ny = 32, 32
 Lx, Ly = 20e3, 20e3
-mesh2d = firedrake.RectangleMesh(Nx, Ny, Lx, Ly)
-mesh = firedrake.ExtrudedMesh(mesh2d, layers=1)
 
-Q = firedrake.FunctionSpace(mesh, "CG", 2, vfamily="GL", vdegree=4)
-Q_c = firedrake.FunctionSpace(mesh, "CG", 2, vfamily="R", vdegree=0)
-V = firedrake.VectorFunctionSpace(mesh, "CG", 2, vfamily="GL", vdegree=4, dim=2)
-W = firedrake.FunctionSpace(mesh, "DG", 1, vfamily="GL", vdegree=5)
+def function_spaces_3d(Nx, Ny):
+    mesh2d = firedrake.RectangleMesh(Nx, Ny, Lx, Ly)
+    mesh = firedrake.ExtrudedMesh(mesh2d, layers=1)
 
-x, y, ζ = firedrake.SpatialCoordinate(mesh)
+    Q = firedrake.FunctionSpace(mesh, "CG", 2, vfamily="GL", vdegree=4)
+    Q_c = firedrake.FunctionSpace(mesh, "CG", 2, vfamily="R", vdegree=0)
+    V = firedrake.VectorFunctionSpace(mesh, "CG", 2, vfamily="GL", vdegree=4, dim=2)
+    W = firedrake.FunctionSpace(mesh, "DG", 1, vfamily="GL", vdegree=5)
 
-# The test glacier slopes down and thins out toward the terminus
-h0, dh = 500.0, 100.0
-h = firedrake.interpolate(h0 - dh * x / Lx, Q_c)
-
-s0, ds = 500.0, 50.0
-s = firedrake.interpolate(s0 - ds * x / Lx, Q_c)
+    return Q, Q_c, V, W
 
 
-# The energy density at the surface (MPa / m^3) and heat flux (MPa / m^2 / yr)
-# at the ice bed
-E_surface = 480
-q_bed = 50e-3 * year * 1e-6
+def input_data(Q_c, h0=500.0, dh=100.0, s0=500.0, ds=50.0):
+    mesh = Q_c.ufl_domain()
+    x = firedrake.SpatialCoordinate(mesh)[0]
+
+    # The test glacier slopes down and thins out toward the terminus
+    h = firedrake.interpolate(h0 - dh * x / Lx, Q_c)
+    s = firedrake.interpolate(s0 - ds * x / Lx, Q_c)
+
+    # The energy density at the surface (MPa / m^3) and heat flux (MPa / m^2 / yr)
+    # at the ice bed
+    E_surface = 480
+    q_bed = 50e-3 * year * 1e-6
+
+    return h, s, E_surface, q_bed
 
 
 @pytest.mark.parametrize("params", [{"ksp_type": "cg", "pc_type": "ilu"}, None])
 def test_diffusion(params):
+    Q, Q_c, V, W = function_spaces_3d(32, 32)
+    h, s, E_surface, q_bed = input_data(Q_c)
+    x, y, ζ = firedrake.SpatialCoordinate(Q.ufl_domain())
+
     E_true = firedrake.interpolate(E_surface + q_bed / α * h * (1 - ζ), Q)
     E = firedrake.interpolate(Constant(480), Q)
 
@@ -85,6 +92,11 @@ def test_diffusion(params):
 
 
 def test_advection():
+    Q, Q_c, V, W = function_spaces_3d(32, 32)
+    h0, dh = 500.0, 100.0
+    h, s, E_surface, q_bed = input_data(Q_c, h0, dh)
+    x, y, ζ = firedrake.SpatialCoordinate(Q.ufl_domain())
+
     E_initial = firedrake.interpolate(E_surface + q_bed / α * h * (1 - ζ), Q)
     E = E_initial.copy(deepcopy=True)
 
@@ -127,6 +139,7 @@ def test_advection():
             energy_surface=Constant(E_surface),
         )
 
+    mesh = E.ufl_domain()
     error_surface = assemble((E - E_surface) ** 2 * ds_t)
     assert error_surface / assemble(E_surface ** 2 * ds_t(mesh)) < 1e-2
     error_bed = assemble((E - E_initial) ** 2 * ds_b)
@@ -134,6 +147,11 @@ def test_advection():
 
 
 def test_advection_diffusion():
+    Q, Q_c, V, W = function_spaces_3d(32, 32)
+    h0, dh = 500.0, 100.0
+    h, s, E_surface, q_bed = input_data(Q_c, h0, dh)
+    x, y, ζ = firedrake.SpatialCoordinate(Q.ufl_domain())
+
     E_initial = firedrake.interpolate(E_surface + q_bed / α * h * (1 - ζ), Q)
     E = E_initial.copy(deepcopy=True)
 
@@ -167,6 +185,10 @@ def test_advection_diffusion():
 
 
 def test_converting_fields():
+    Q, Q_c, V, W = function_spaces_3d(32, 32)
+    h, s, E_surface, q_bed = input_data(Q_c)
+    x, y, ζ = firedrake.SpatialCoordinate(Q.ufl_domain())
+
     δT = 5.0
     T_surface = Tm - δT
     T_expr = firedrake.min_value(Tm, T_surface + 2 * δT * (1 - ζ))
@@ -185,6 +207,11 @@ def test_converting_fields():
 
 
 def test_strain_heating():
+    Q, Q_c, V, W = function_spaces_3d(32, 32)
+    h0, dh = 500.0, 100.0
+    h, s, E_surface, q_bed = input_data(Q_c, h0, dh)
+    x, y, ζ = firedrake.SpatialCoordinate(Q.ufl_domain())
+
     E_initial = firedrake.interpolate(E_surface + q_bed / α * h * (1 - ζ), Q)
 
     u0 = 100.0
@@ -227,21 +254,24 @@ def test_strain_heating():
 
 
 def test_2d_heat_transport():
-    Q2D = firedrake.FunctionSpace(mesh2d, "CG", 1)
-    x, y = firedrake.SpatialCoordinate(mesh2d)
-    h = firedrake.interpolate(h0 - dh * x / Lx, Q2D)
-    E_initial = firedrake.interpolate(E_surface + 0.5 * q_bed / α * h, Q2D)
+    Nx, Ny = 32, 32
+    mesh = firedrake.RectangleMesh(Nx, Ny, Lx, Ly)
+    Q = firedrake.FunctionSpace(mesh, "CG", 1)
+    h, s, E_surface, q_bed = input_data(Q, h0=500.0, dh=0.0)
+
+    x, y = firedrake.SpatialCoordinate(mesh)
+    E_initial = firedrake.interpolate(E_surface + 0.5 * q_bed / α * h, Q)
     E = E_initial.copy(deepcopy=True)
 
     u0 = 100.0
     du = 100.0
     u_expr = as_vector((u0 + du * x / Lx, 0))
-    V2D = firedrake.VectorFunctionSpace(mesh2d, "CG", 1)
-    u = firedrake.interpolate(u_expr, V2D)
+    V = firedrake.VectorFunctionSpace(mesh, "CG", 1)
+    u = firedrake.interpolate(u_expr, V)
 
-    print(E.dat.data_ro[:].max())
+    print(E.dat.data_ro[:].min(), E.dat.data_ro[:].max())
 
-    dt = 10.0
+    dt = 0.5
     final_time = Lx / u0
     num_steps = int(final_time / dt) + 1
     model = icepack.models.HeatTransport2D()
@@ -253,8 +283,8 @@ def test_2d_heat_transport():
             velocity=u,
             thickness=h,
             heat=Constant(0.0),
-            heat_bed=Constant(q_bed),
+            heat_bed=Constant(0.0), #Constant(q_bed),
             energy_inflow=E_initial,
         )
 
-    print(E.dat.data_ro[:].max())
+    print(E.dat.data_ro[:].min(), E.dat.data_ro[:].max())
