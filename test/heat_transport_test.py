@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2021 by Daniel Shapero <shapero@uw.edu>
+# Copyright (C) 2019-2022 by Daniel Shapero <shapero@uw.edu>
 #
 # This file is part of icepack.
 #
@@ -269,8 +269,6 @@ def test_2d_heat_transport():
     V = firedrake.VectorFunctionSpace(mesh, "CG", 1)
     u = firedrake.interpolate(u_expr, V)
 
-    print(E.dat.data_ro[:].min(), E.dat.data_ro[:].max())
-
     dt = 0.5
     final_time = Lx / u0
     num_steps = int(final_time / dt) + 1
@@ -283,8 +281,8 @@ def test_2d_heat_transport():
             velocity=u,
             thickness=h,
             heat=Constant(0.0),
-            heat_bed=Constant(0.0), #Constant(q_bed),
+            heat_bed=Constant(0.0),
             energy_inflow=E_initial,
         )
 
-    print(E.dat.data_ro[:].min(), E.dat.data_ro[:].max())
+    assert firedrake.norm(E - E_initial) / firedrake.norm(E_initial) < 1 / Nx
