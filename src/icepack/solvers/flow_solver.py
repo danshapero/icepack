@@ -14,6 +14,10 @@ r"""Solvers for ice physics models"""
 
 import firedrake
 from firedrake import dx, inner, Constant
+from firedrake.adjoint_utils.variational_solver import (
+    NonlinearVariationalProblemMixin,
+    NonlinearVariationalSolverMixin,
+)
 from ..utilities import default_solver_parameters
 from icepack.calculus import grad, div, FacetNormal
 
@@ -142,8 +146,9 @@ class FlowSolver:
         return self._prognostic_solver.solve(dt, **kwargs)
 
 
-class MinimizationProblem:
-    def __init__(self, E, S, u, bcs, form_compiler_parameters):
+class MinimizationProblem(firedrake.NonlinearVariationalProblem):
+    @NonlinearVariationalProblemMixin._ad_annotate_init
+    def __init__(self, E, S, u, bcs, **kwargs):
         r"""Nonlinear optimization problem argmin E(u).
 
         Parameters
@@ -151,24 +156,29 @@ class MinimizationProblem:
         E : firedrake.Form
             The functional to be minimized
         S : firedrake.Form
-            A positive functional measure the scale of the solution
+            A positive functional measuring the scale of the solution
         u : firedrake.Function
             Initial guess for the minimizer
         bcs : firedrake.DirichletBC
             any essential boundary conditions for the solution
+        **kwargs : dict
+            passed to firedrake.NonlinearVariationalProblem
         """
         self.E = E
         self.S = S
-        self.u = u
-        self.bcs = bcs
-        self.form_compiler_parameters = form_compiler_parameters
+
+        F = firedrake.derivative(E, u)
+        super().__init__(F, u, bcs, **kwargs)
+
+        self.form_compiler_parameters = kwargs.get("form_compiler_parameters", {})
 
     def assemble(self, *args, **kwargs):
         kwargs["form_compiler_parameters"] = self.form_compiler_parameters
         return firedrake.assemble(*args, **kwargs)
 
 
-class NewtonSolver:
+class NewtonSolver(firedrake.NonlinearVariationalSolver):
+    @NonlinearVariationalSolverMixin._ad_annotate_init
     def __init__(self, problem, tolerance, solver_parameters=None, **kwargs):
         r"""Solve a MinimizationProblem using Newton's method with backtracking
         line search
@@ -262,19 +272,22 @@ class NewtonSolver:
         self.search_direction_solver.solve()
         self.iteration += 1
 
+    @NonlinearVariationalSolverMixin._ad_annotate_solve
     def solve(self):
         r"""Step the Newton iteration until convergence"""
-        self.reinit()
+        with firedrake.adjoint.stop_annotating():
+            self.reinit()
 
-        dE_dv = self.dE_dv
-        S = self.problem.S
-        _assemble = self.problem.assemble
-        while abs(_assemble(dE_dv)) > self.tolerance * _assemble(S):
-            self.step()
-            if self.iteration >= self.max_iterations:
-                raise firedrake.ConvergenceError(
-                    f"Newton search did not converge after {self.max_iterations} iterations!"
-                )
+            dE_dv = self.dE_dv
+            S = self.problem.S
+            _assemble = self.problem.assemble
+            while abs(_assemble(dE_dv)) > self.tolerance * _assemble(S):
+                self.step()
+                if self.iteration >= self.max_iterations:
+                    raise firedrake.ConvergenceError(
+                        f"Newton search did not converge after {self.max_iterations} iterations!"
+                    )
+
 
 class IcepackSolver:
     def __init__(
@@ -323,13 +336,13 @@ class IcepackSolver:
 
         # Create the action and scale functionals
         _kwargs = {"side_wall_ids": self._side_wall_ids, "ice_front_ids": ice_front_ids}
-        action = self._model.action(**self._fields, **_kwargs)
-        scale = self._model.scale(**self._fields, **_kwargs)
+        E = self._model.action(**self._fields, **_kwargs)
+        S = self._model.scale(**self._fields, **_kwargs)
 
         # Set up a minimization problem and solver
         quadrature_degree = self._model.quadrature_degree(**self._fields)
-        params = {"quadrature_degree": quadrature_degree}
-        problem = MinimizationProblem(action, scale, u, bcs, params)
+        params = {"form_compiler_parameters": {"quadrature_degree": quadrature_degree}}
+        problem = MinimizationProblem(E, S, u, bcs, **params)
         self._solver = NewtonSolver(
             problem,
             self._tolerance,
