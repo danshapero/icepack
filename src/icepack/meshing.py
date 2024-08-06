@@ -240,7 +240,7 @@ def _add_loop_to_geometry(geometry, multi_line_string):
         geometry.add_physical(arc)
         line_loop.extend(arc)
 
-    return geometry.add_line_loop(line_loop)
+    return geometry.add_curve_loop(line_loop)
 
 
 def collection_to_geo(collection, lcar=10e3):
@@ -249,26 +249,27 @@ def collection_to_geo(collection, lcar=10e3):
     collection = normalize(collection)
     features = collection["features"]
 
-    geometry = pygmsh.built_in.Geometry()
-    points = [
-        [
+    with pygmsh.geo.Geometry() as geometry:
+        points = [
             [
-                geometry.add_point((point[0], point[1], 0.0), lcar=lcar)
-                for point in line_string[:-1]
+                [
+                    geometry.add_point((point[0], point[1]), lcar)
+                    for point in line_string[:-1]
+                ]
+                for line_string in feature["geometry"]["coordinates"]
             ]
-            for line_string in feature["geometry"]["coordinates"]
+            for feature in features
         ]
-        for feature in features
-    ]
 
-    line_loops = [
-        _add_loop_to_geometry(geometry, multi_line_string)
-        for multi_line_string in points
-    ]
-    plane_surface = geometry.add_plane_surface(line_loops[0], line_loops[1:])
-    geometry.add_physical(plane_surface)
+        line_loops = [
+            _add_loop_to_geometry(geometry, multi_line_string)
+            for multi_line_string in points
+        ]
+        plane_surface = geometry.add_plane_surface(line_loops[0], line_loops[1:])
+        geometry.add_physical(plane_surface)
+        mesh = geometry.generate_mesh()
 
-    return geometry
+    return mesh
 
 
 def _find_interior_point(points):
