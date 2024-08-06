@@ -92,12 +92,12 @@ def test_pygmsh7():
     assert legend is not None
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize("input_data", test_data)
 def test_converting_to_geo(tmpdir, input_data):
     collection = input_data()
     geometry = icepack.meshing.collection_to_geo(collection, lcar=1e-2)
-    print(geometry)
+    assert len(geometry.points) > 0
+    assert len(geometry.get_cells_type("triangle")) > 0
 
 
 @pytest.mark.parametrize("input_data", test_data)

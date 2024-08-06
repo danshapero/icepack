@@ -222,27 +222,6 @@ def normalize(input_collection):
     return collection
 
 
-def _add_loop_to_geometry(geometry, multi_line_string):
-    line_loop = []
-    for line_index, line_string in enumerate(multi_line_string):
-        arc = []
-        for index in range(len(line_string) - 1):
-            x1 = line_string[index]
-            x2 = line_string[index + 1]
-            arc.append(geometry.add_line(x1, x2))
-
-        num_lines = len(multi_line_string)
-        next_line_string = multi_line_string[(line_index + 1) % num_lines]
-        x1 = line_string[-1]
-        x2 = next_line_string[0]
-        arc.append(geometry.add_line(x1, x2))
-
-        geometry.add_physical(arc)
-        line_loop.extend(arc)
-
-    return geometry.add_curve_loop(line_loop)
-
-
 def collection_to_geo(collection, lcar=10e3):
     r"""Convert a GeoJSON FeatureCollection into pygmsh geometry that can then
     be transformed into an unstructured triangular mesh"""
@@ -261,12 +240,31 @@ def collection_to_geo(collection, lcar=10e3):
             for feature in features
         ]
 
-        line_loops = [
-            _add_loop_to_geometry(geometry, multi_line_string)
-            for multi_line_string in points
-        ]
+        label_count = 0
+        line_loops = []
+        for multi_line_string in points:
+            line_loop = []
+            for line_index, line_string in enumerate(multi_line_string):
+                arc = []
+                for index in range(len(line_string) - 1):
+                    x1 = line_string[index]
+                    x2 = line_string[index + 1]
+                    arc.append(geometry.add_line(x1, x2))
+
+                num_lines = len(multi_line_string)
+                next_line_string = multi_line_string[(line_index + 1) % num_lines]
+                x1 = line_string[-1]
+                x2 = next_line_string[0]
+                arc.append(geometry.add_line(x1, x2))
+
+                label_count += 1
+                geometry.add_physical(arc, label=str(label_count))
+                line_loop.extend(arc)
+
+            line_loops.append(geometry.add_curve_loop(line_loop))
+
         plane_surface = geometry.add_plane_surface(line_loops[0], line_loops[1:])
-        geometry.add_physical(plane_surface)
+        geometry.add_physical(plane_surface, label="dummy")
         mesh = geometry.generate_mesh()
 
     return mesh
