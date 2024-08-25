@@ -222,52 +222,48 @@ def normalize(input_collection):
     return collection
 
 
-def collection_to_geo(collection, lcar=10e3):
+def collection_to_geo(geometry, collection, label="dummy", lcar=10e3):
     r"""Convert a GeoJSON FeatureCollection into pygmsh geometry that can then
     be transformed into an unstructured triangular mesh"""
     collection = normalize(collection)
     features = collection["features"]
 
-    with pygmsh.geo.Geometry() as geometry:
-        points = [
+    points = [
+        [
             [
-                [
-                    geometry.add_point((point[0], point[1]), lcar)
-                    for point in line_string[:-1]
-                ]
-                for line_string in feature["geometry"]["coordinates"]
+                geometry.add_point((point[0], point[1]), lcar)
+                for point in line_string[:-1]
             ]
-            for feature in features
+            for line_string in feature["geometry"]["coordinates"]
         ]
+        for feature in features
+    ]
 
-        label_count = 0
-        line_loops = []
-        for multi_line_string in points:
-            line_loop = []
-            for line_index, line_string in enumerate(multi_line_string):
-                arc = []
-                for index in range(len(line_string) - 1):
-                    x1 = line_string[index]
-                    x2 = line_string[index + 1]
-                    arc.append(geometry.add_line(x1, x2))
-
-                num_lines = len(multi_line_string)
-                next_line_string = multi_line_string[(line_index + 1) % num_lines]
-                x1 = line_string[-1]
-                x2 = next_line_string[0]
+    label_count = 0
+    line_loops = []
+    for multi_line_string in points:
+        line_loop = []
+        for line_index, line_string in enumerate(multi_line_string):
+            arc = []
+            for index in range(len(line_string) - 1):
+                x1 = line_string[index]
+                x2 = line_string[index + 1]
                 arc.append(geometry.add_line(x1, x2))
 
-                label_count += 1
-                geometry.add_physical(arc, label=str(label_count))
-                line_loop.extend(arc)
+            num_lines = len(multi_line_string)
+            next_line_string = multi_line_string[(line_index + 1) % num_lines]
+            x1 = line_string[-1]
+            x2 = next_line_string[0]
+            arc.append(geometry.add_line(x1, x2))
 
-            line_loops.append(geometry.add_curve_loop(line_loop))
+            label_count += 1
+            geometry.add_physical(arc, label=str(label_count))
+            line_loop.extend(arc)
 
-        plane_surface = geometry.add_plane_surface(line_loops[0], line_loops[1:])
-        geometry.add_physical(plane_surface, label="dummy")
-        mesh = geometry.generate_mesh()
+        line_loops.append(geometry.add_curve_loop(line_loop))
 
-    return mesh
+    plane_surface = geometry.add_plane_surface(line_loops[0], line_loops[1:])
+    geometry.add_physical(plane_surface, label=label)
 
 
 def _find_interior_point(points):
