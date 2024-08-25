@@ -79,7 +79,7 @@ def test_pygmsh7():
             geometry.add_physical(line, label=str(index + 1))
         loop = geometry.add_curve_loop(lines)
         surface = geometry.add_plane_surface(loop)
-        geometry.add_physical(surface)
+        geometry.add_physical(surface, "dummy")
         mesh = geometry.generate_mesh()
         pygmsh.write("test.msh")
 
@@ -95,9 +95,11 @@ def test_pygmsh7():
 @pytest.mark.parametrize("input_data", test_data)
 def test_converting_to_geo(tmpdir, input_data):
     collection = input_data()
-    geometry = icepack.meshing.collection_to_geo(collection, lcar=1e-2)
-    assert len(geometry.points) > 0
-    assert len(geometry.get_cells_type("triangle")) > 0
+    with pygmsh.geo.Geometry() as geometry:
+        icepack.meshing.collection_to_geo(geometry, collection, lcar=1e-2)
+        mesh = geometry.generate_mesh()
+    assert len(mesh.points) > 0
+    assert len(mesh.get_cells_type("triangle")) > 0
 
 
 @pytest.mark.parametrize("input_data", test_data)
@@ -114,22 +116,18 @@ def test_converting_to_triangle(input_data):
     assert mesh.num_cells() > 0
 
 
-@pytest.mark.xfail
 def test_meshing_real_outlines(tmp_path):
     for glacier_name in icepack.datasets.get_glacier_names():
         outline_filename = icepack.datasets.fetch_outline(glacier_name)
         with open(outline_filename, "r") as outline_file:
             outline = geojson.load(outline_file)
 
-        geometry = icepack.meshing.collection_to_geo(outline)
-        geo_filename = f"{tmp_path}/{glacier_name}.geo"
-        with open(geo_filename, "w") as geo_file:
-            geo_file.write(geometry.get_code())
-
         msh_filename = f"{tmp_path}/{glacier_name}.msh"
-        args = ["gmsh", "-2", "-v", "3", "-o", msh_filename, geo_filename]
-        result = subprocess.run(args)
-        assert result.returncode == 0
+        with pygmsh.geo.Geometry() as geometry:
+            icepack.meshing.collection_to_geo(geometry, outline)
+            mesh = geometry.generate_mesh()
+            pygmsh.write(msh_filename)
+
         mesh = firedrake.Mesh(msh_filename)
         assert mesh.num_cells() > 0
 
