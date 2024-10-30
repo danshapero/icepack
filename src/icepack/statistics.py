@@ -1,4 +1,4 @@
-# Copyright (C) 2022 by Daniel Shapero <shapero@uw.edu>
+# Copyright (C) 2022-2024 by Daniel Shapero <shapero@uw.edu>
 #
 # This file is part of icepack.
 #
@@ -136,7 +136,7 @@ _default_rol_options = {
 
 
 class MaximumProbabilityEstimator:
-    def __init__(self, problem, solver_type="rol", **kwargs):
+    def __init__(self, problem, solver_type="tao", **kwargs):
         r"""Estimates the true value of the controls by computing the maximizer
         of the posterior probability distribution"""
 
@@ -155,6 +155,52 @@ class MaximumProbabilityEstimator:
     @property
     def state(self):
         return self._state
+
+    def _setup_rol(self, reduced_objective):
+        if not has_rol:
+            raise ImportError("Cannot import ROL!")
+
+        problem_wrapper = pyadjoint.MinimizationProblem(reduced_objective)
+
+        if "rol_options" in self._kwargs.keys():
+            options = self._kwargs["rol_options"]
+        else:
+            options = copy.deepcopy(_default_rol_options)
+
+            # A bunch of glue code to talk to ROL. We want to use our own
+            # keyword argument names in the event that we start using a
+            # different optimization package like TAO on the backend, so
+            # here we're translating between our names and ROL's.
+            test = options["Status Test"]
+            test["Step Tolerance"] = self._kwargs.get("step_tolerance", 5e-3)
+            test["Gradient Tolerance"] = self._kwargs.get("gradient_tolerance", 1e-4)
+            test["Iteration Limit"] = self._kwargs.get("max_iterations", 50)
+
+            general = options["General"]
+            general["Print Verbosity"] = int(self._kwargs.get("verbose", False))
+
+            # Use the Newton trust region algorithm if we can compute the
+            # second derivative of the objective and BFGS if we can't.
+            algorithm = self._kwargs.get("algorithm", "trust-region")
+            if algorithm == "bfgs":
+                options["Step"] = {
+                    "Type": "Line Search",
+                    "Line Search": {
+                        "Descent Method": {"Type": "Quasi-Newton Step"}
+                    },
+                }
+                memory = self._kwargs.get("memory", 10)
+                general["Secant"] = {
+                    "Type": "Limited-Memory BFGS",
+                    "Maximum Storage": memory,
+                }
+
+        self._solver = _ROLSolverWrapper(problem_wrapper, options)
+
+    def _setup_tao(self, reduced_objective):
+        problem_wrapper = pyadjoint.MinimizationProblem(reduced_objective)
+        options = self._kwargs["tao_options"]
+        self._solver = pyadjoint.TAOSolver(problem_wrapper, options)
 
     def solve(self):
         firedrake.adjoint.continue_annotation()
@@ -177,45 +223,9 @@ class MaximumProbabilityEstimator:
 
         # Form the minimization problem and solver
         if isinstance(self._solver_type, str) and self._solver_type.lower() == "rol":
-            if not has_rol:
-                raise ImportError("Cannot import ROL!")
-
-            problem_wrapper = pyadjoint.MinimizationProblem(reduced_objective)
-
-            if "rol_options" in self._kwargs.keys():
-                options = self._kwargs["rol_options"]
-            else:
-                options = copy.deepcopy(_default_rol_options)
-
-                # A bunch of glue code to talk to ROL. We want to use our own
-                # keyword argument names in the event that we start using a
-                # different optimization package like TAO on the backend, so
-                # here we're translating between our names and ROL's.
-                test = options["Status Test"]
-                test["Step Tolerance"] = self._kwargs.get("step_tolerance", 5e-3)
-                test["Gradient Tolerance"] = self._kwargs.get("gradient_tolerance", 1e-4)
-                test["Iteration Limit"] = self._kwargs.get("max_iterations", 50)
-
-                general = options["General"]
-                general["Print Verbosity"] = int(self._kwargs.get("verbose", False))
-
-                # Use the Newton trust region algorithm if we can compute the
-                # second derivative of the objective and BFGS if we can't.
-                algorithm = self._kwargs.get("algorithm", "trust-region")
-                if algorithm == "bfgs":
-                    options["Step"] = {
-                        "Type": "Line Search",
-                        "Line Search": {
-                            "Descent Method": {"Type": "Quasi-Newton Step"}
-                        },
-                    }
-                    memory = self._kwargs.get("memory", 10)
-                    general["Secant"] = {
-                        "Type": "Limited-Memory BFGS",
-                        "Maximum Storage": memory,
-                    }
-
-            self._solver = _ROLSolverWrapper(problem_wrapper, options)
+            self._setup_rol(reduced_objective)
+        elif isinstance(self._solver_type, str) and self._solver_type.lower() == "tao":
+            self._setup_tao(reduced_objective)
         else:
             raise NotImplementedError("Only ROL solver implemented for now!")
 
