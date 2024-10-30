@@ -73,7 +73,9 @@ def test_poisson_problem():
 
     q_initial = firedrake.Function(Q)
     problem = StatisticsProblem(simulation, loss_functional, regularization, q_initial)
-    estimator = MaximumProbabilityEstimator(problem, gradient_tolerance=1e-7)
+    estimator = MaximumProbabilityEstimator(
+        problem, solver_type="tao", tao_options={"tao_type": "lmvm", "tao_gatol": 1e-7}
+    )
     q = estimator.solve()
 
     assert firedrake.norm(q - q_true) < 0.25
@@ -181,7 +183,7 @@ def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
     stats_problem = StatisticsProblem(
         simulation, loss_functional, regularization, q_initial
     )
-    estimator = MaximumProbabilityEstimator(stats_problem)
+    estimator = MaximumProbabilityEstimator(stats_problem, solver_type="rol")
     q = estimator.solve()
 
     assert firedrake.norm(q - q_true) / firedrake.norm(q_initial - q_true) < 0.25
