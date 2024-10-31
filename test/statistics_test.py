@@ -26,7 +26,6 @@ from icepack.constants import (
 )
 
 
-@pytest.mark.skipif(not icepack.statistics.has_rol, reason="Couldn't import ROL")
 def test_poisson_problem():
     Nx, Ny = 32, 32
 
@@ -73,15 +72,20 @@ def test_poisson_problem():
 
     q_initial = firedrake.Function(Q)
     problem = StatisticsProblem(simulation, loss_functional, regularization, q_initial)
-    estimator = MaximumProbabilityEstimator(
-        problem, solver_type="tao", tao_options={"tao_type": "lmvm", "tao_gatol": 1e-7}
-    )
+    opts = {
+        "solver_type": "tao",
+        "tao_options": {
+            "tao_type": "ntr",
+            "tao_gatol": 1e-7,
+            "tao_monitor": None,
+        },
+    }
+    estimator = MaximumProbabilityEstimator(problem, **opts)
     q = estimator.solve()
 
     assert firedrake.norm(q - q_true) < 0.25
 
 
-@pytest.mark.skipif(not icepack.statistics.has_rol, reason="Couldn't import ROL")
 @pytest.mark.parametrize("with_noise", [False, True])
 @pytest.mark.parametrize("diagnostic_solver_type", ["icepack", "petsc"])
 def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
@@ -129,7 +133,8 @@ def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
         diagnostic_solver_type=diagnostic_solver_type,
         diagnostic_solver_parameters={
             "snes_type": "newtonls",
-            "ksp_type": "preonly",
+            "snes_linesearch_type": "nleqerr",
+            "ksp_type": "gmres",
             "pc_type": "lu",
             "pc_factor_mat_solver_type": "mumps",
         },
@@ -183,7 +188,16 @@ def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
     stats_problem = StatisticsProblem(
         simulation, loss_functional, regularization, q_initial
     )
-    estimator = MaximumProbabilityEstimator(stats_problem, solver_type="rol")
+
+    opts = {
+        "solver_type": "tao",
+        "tao_options": {
+            "tao_monitor": None,
+            "tao_type": "ntr",
+            "tao_gatol": 1e-4,
+        },
+    }
+    estimator = MaximumProbabilityEstimator(stats_problem, **opts)
     q = estimator.solve()
 
     assert firedrake.norm(q - q_true) / firedrake.norm(q_initial - q_true) < 0.25
