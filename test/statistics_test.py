@@ -179,9 +179,9 @@ def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
     firedrake.adjoint.pause_annotation()
 
     q_control = firedrake.adjoint.Control(q_test)
-    min_order = firedrake.adjoint.taylor_test(
-        firedrake.adjoint.ReducedFunctional(J, q_control), q_test,
-        firedrake.Function(q_test.function_space()).assign(0.1))
+    j = firedrake.adjoint.ReducedFunctional(J, q_control)
+    p_test = firedrake.Function(Q).assign(0.1)
+    min_order = firedrake.adjoint.taylor_test(j, q_test, p_test)
     assert min_order > 1.98
     firedrake.adjoint.get_working_tape().clear_tape()
 
