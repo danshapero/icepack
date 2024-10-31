@@ -107,6 +107,13 @@ except AttributeError:
     has_rol = False
 
 
+try:
+    import pyadjoint.optimization.tao_solver
+    has_tao = True
+except AttributeError:
+    has_tao = False
+
+
 _default_rol_options = {
     "Step": {
         "Type": "Trust Region",
@@ -198,6 +205,9 @@ class MaximumProbabilityEstimator:
         self._solver = _ROLSolverWrapper(problem_wrapper, options)
 
     def _setup_tao(self, reduced_objective):
+        if not has_tao:
+            raise ImportError("Cannot import TAO!")
+
         problem_wrapper = pyadjoint.MinimizationProblem(reduced_objective)
         options = self._kwargs["tao_options"]
         self._solver = pyadjoint.TAOSolver(problem_wrapper, options)
@@ -227,7 +237,7 @@ class MaximumProbabilityEstimator:
         elif isinstance(self._solver_type, str) and self._solver_type.lower() == "tao":
             self._setup_tao(reduced_objective)
         else:
-            raise NotImplementedError("Only ROL solver implemented for now!")
+            raise NotImplementedError("Only ROL and TAO solvers implemented for now!")
 
         result = self._solver.solve()
         firedrake.adjoint.pause_annotation()
