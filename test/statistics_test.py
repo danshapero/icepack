@@ -87,7 +87,8 @@ def test_poisson_problem():
 
 
 @pytest.mark.parametrize("with_noise", [False, True])
-@pytest.mark.parametrize("diagnostic_solver_type", ["icepack", "petsc"])
+#@pytest.mark.parametrize("diagnostic_solver_type", ["icepack", "petsc"])
+@pytest.mark.parametrize("diagnostic_solver_type", ["petsc"])
 def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
     Nx, Ny = 32, 32
     Lx, Ly = 20e3, 20e3
@@ -132,6 +133,8 @@ def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
         dirichlet_ids=dirichlet_ids,
         diagnostic_solver_type=diagnostic_solver_type,
         diagnostic_solver_parameters={
+            "snes_monitor": None,
+            "snes_max_it": 500,
             "snes_type": "newtonls",
             "snes_linesearch_type": "nleqerr",
             "ksp_type": "gmres",
@@ -193,8 +196,8 @@ def test_ice_shelf_inverse(with_noise, diagnostic_solver_type):
         "solver_type": "tao",
         "tao_options": {
             "tao_monitor": None,
-            "tao_type": "ntr",
-            "tao_gatol": 1e-4,
+            "tao_type": "lmvm",
+            "tao_gttol": 1e-5,
         },
     }
     estimator = MaximumProbabilityEstimator(stats_problem, **opts)

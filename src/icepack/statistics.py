@@ -210,7 +210,9 @@ class MaximumProbabilityEstimator:
 
         problem_wrapper = pyadjoint.MinimizationProblem(reduced_objective)
         options = self._kwargs["tao_options"]
-        self._solver = pyadjoint.TAOSolver(problem_wrapper, options)
+        self._solver = pyadjoint.TAOSolver(
+            problem_wrapper, options, convert_options={"riesz_representation": "L2"}
+        )
 
     def solve(self):
         firedrake.adjoint.continue_annotation()
