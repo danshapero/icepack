@@ -14,6 +14,7 @@ r"""Solvers for ice physics models"""
 
 import firedrake
 from firedrake import dx, inner, Constant
+import petsc4py
 from icepack.optimization import MinimizationProblem, NewtonSolver
 from ..utilities import default_solver_parameters
 from icepack.calculus import grad, div, FacetNormal
@@ -268,6 +269,15 @@ class PETScSolver:
         self._solver = firedrake.NonlinearVariationalSolver(
             problem, solver_parameters=self._solver_parameters
         )
+
+        # Make the PETSc solver use the objective functional for line searches
+        u_tmp = u.copy(deepcopy=True)
+        def objective(snes: petsc4py.PETSc.SNES, x: petsc4py.PETSc.Vec) -> float:
+            with u_tmp.dat.vec_wo as vec:
+                vec.setArray(x.array)
+            return firedrake.assemble(firedrake.replace(action, {u: u_tmp}))
+
+        self._solver.snes.setObjective(objective)
 
     def solve(self, **kwargs):
         r"""Solve the diagnostic model physics for the ice velocity"""
