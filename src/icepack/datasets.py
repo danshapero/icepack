@@ -12,202 +12,131 @@
 
 r"""Routines for fetching the glaciological data sets used in the demos"""
 
-import os
-from getpass import getpass
+import pathlib
 import requests
 import pooch
+import earthaccess
 
 
 pooch.get_logger().setLevel("WARNING")
 
 
-class EarthDataDownloader:
-    def __init__(self):
-        self._username = None
-        self._password = None
-
-    def _get_credentials(self):
-        if self._username is None:
-            username_env = os.environ.get("EARTHDATA_USERNAME")
-            if username_env is None:
-                self._username = input("EarthData username: ")
-            else:
-                self._username = username_env
-
-        if self._password is None:
-            password_env = os.environ.get("EARTHDATA_PASSWORD")
-            if password_env is None:
-                self._password = getpass("EarthData password: ")
-            else:
-                self._password = password_env
-
-        return self._username, self._password
-
+class EarthdataDownloader:
     def __call__(self, url, output_file, dataset):
-        auth = self._get_credentials()
+        earthaccess.login()
+        eaauth = earthaccess.__auth__
+        auth = (eaauth.username, eaauth.password)
         downloader = pooch.HTTPDownloader(auth=auth, progressbar=True)
-        try:
-            login = requests.get(url)
-            downloader(login.url, output_file, dataset)
-        except requests.exceptions.HTTPError as error:
-            if "Unauthorized" in str(error):
-                pooch.get_logger().error("Wrong username/password!")
-                self._username = None
-                self._password = None
-            raise error
+        return downloader(requests.get(url).url, output_file, dataset)
 
 
-_earthdata_downloader = EarthDataDownloader()
+def _fetch_nsidc(search={}, **kwargs):
+    kw = {
+        "known_hash": None,
+        "path": pooch.os_cache("icepack"),
+        "downloader": EarthdataDownloader(),
+        "processor": kwargs.pop("processor", None),
+    }
 
-_nsidc_url = "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected"
-_daacdata = "https://daacdata.apps.nsidc.org/pub/DATASETS"
-_nsidc_links = {
-    "antarctic_ice_vel_phase_map_v01.nc": (
-        "md5:2e1ca76870a6e67ace309a9850739dc9",
-        f"{_nsidc_url}/MEASURES/NSIDC-0754/1/1996/01/01",
-    ),
-    "BedMachineAntarctica-v3.nc": (
-        "md5:9d6e2e5fdd56a0baf534e1eae0f49070",
-        f"{_nsidc_url}/MEASURES/NSIDC-0756/3/1970/01/01",
-    ),
-    "BedMachineGreenland-v5.nc": (
-        "md5:7387182a059dd8cad66ce7638eb0d7cd",
-        f"{_nsidc_url}/ICEBRIDGE/IDBMG4/5/1993/01/01",
-    ),
-    "moa750_2009_hp1_v02.0.tif.gz": (
-        "md5:7d386e916cbc072cd3ada4ee3ba145c9",
-        f"{_daacdata}/nsidc0593_moa2009_v02/geotiff",
-    ),
-    "greenland_vel_mosaic200_2015_2016_vx_v02.1.tif": (
-        "md5:48bfa5266b6ecf5d4939c306f665ce47",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "greenland_vel_mosaic200_2015_2016_vy_v02.1.tif": (
-        "md5:f68a5bbc76bcbb11b3cfe7a979d64651",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "greenland_vel_mosaic200_2015_2016_ex_v02.1.tif": (
-        "md5:e9e3d01d630533d870d552da023a66ba",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "greenland_vel_mosaic200_2015_2016_ey_v02.1.tif": (
-        "md5:1d1b5b0efcdf24218e9f7d75b6750a3d",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "RGI2000-v7.0-G-01_alaska.zip": (
-        "md5:dcde7c544799aff09ad9ea11616fa003",
-        f"{_daacdata}/nsidc0770_rgi_v7/regional_files/RGI2000-v7.0-G",
-    ),
-    "mog100_2015_hp1_v02.tif": (
-        "md5:05758adba03f36fc21883c3dba2ee04c",
-        f"{_nsidc_url}/MEASURES/NSIDC-0547/2/2015/03/12",
-    )
-}
+    try:
+        extra = kwargs["extra"]
+        filename = kwargs["filename"]
+        results = earthaccess.search_datasets(**search)
+        urls = [results[0].summary()["get-data"][0] + extra + filename]
+    except KeyError:
+        results = earthaccess.search_data(**search)
+        urls = results[0].data_links()
 
-nsidc_data = pooch.create(
-    path=pooch.os_cache("icepack"),
-    base_url="",
-    registry={name: md5sum for name, (md5sum, url) in _nsidc_links.items()},
-    urls={name: f"{url}/{name}" for name, (md5sum, url) in _nsidc_links.items()},
-)
+    filenames = [
+        pooch.retrieve(url, fname=pathlib.Path(url).name, **kw) for url in urls
+    ]
+    return filenames[0] if len(filenames) == 1 else filenames
 
 
 def fetch_measures_antarctica():
     r"""Fetch the MEaSUREs Antarctic velocity map"""
-    return nsidc_data.fetch(
-        "antarctic_ice_vel_phase_map_v01.nc", downloader=_earthdata_downloader
-    )
+    return _fetch_nsidc({"short_name": "NSIDC-0754"})
 
 
 def fetch_measures_greenland():
     r"""Fetch the MEaSUREs Greenland velocity map"""
-    return [
-        nsidc_data.fetch(
-            f"greenland_vel_mosaic200_2015_2016_{field_name}_v02.1.tif",
-            downloader=_earthdata_downloader,
-        )
-        for field_name in ["vx", "vy", "ex", "ey"]
-    ]
+    search = {"short_name": "NSIDC-0478", "granule_name": "*200_2015_2016*"}
+    return _fetch_nsidc(search)
 
 
 def fetch_bedmachine_antarctica():
     r"""Fetch the BedMachine map of Antarctic ice thickness, surface elevation,
     and bed elevation"""
-    return nsidc_data.fetch(
-        "BedMachineAntarctica-v3.nc", downloader=_earthdata_downloader
-    )
+    return _fetch_nsidc({"short_name": "NSIDC-0756"})
 
 
 def fetch_bedmachine_greenland():
     r"""Fetch the BedMachine map of Greenland ice thickness, surface elevation,
     and bed elevation"""
-    return nsidc_data.fetch(
-        "BedMachineGreenland-v5.nc", downloader=_earthdata_downloader
-    )
-
-
-_outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes"
-_outlines_commit = "5906b7c21d844a982aa012e934fe29b31ef13d41"
-outlines = pooch.create(
-    path=pooch.os_cache("icepack"),
-    base_url=f"{_outlines_url}/{_outlines_commit}/glaciers/",
-    registry={
-        "amery.geojson": "md5:b9a32abaacc3a36d5b696a26c2bd1b9b",
-        "filchner-ronne.geojson": "md5:7876e9fad2fe74a99f3b1ff92e12dc3c",
-        "getz.geojson": "md5:31dc3f10c0a06c05020683e8cb5a9f59",
-        "helheim.geojson": "md5:21b754c088ceeb5995295a6ce54783e0",
-        "hiawatha.geojson": "md5:3b0aa71d21641792b1bbbda35e185cca",
-        "jakobshavn.geojson": "md5:baf707914993fb052e00024ccdceab92",
-        "larsen-2015.geojson": "md5:317ba73b8a2370ec0832b0bc0bcfc986",
-        "larsen-2018.geojson": "md5:cccb22fd94143d6ccbb4aaa08dee6cad",
-        "larsen-2019.geojson": "md5:3188635279f93e863ae800fecb9d085a",
-        "pine-island.geojson": "md5:2ebfb7a321568dcd481771ab3f0993c6",
-        "ross.geojson": "md5:a4cf6461607c90961280e5afbab1123b",
-    },
-)
-
-
-def get_glacier_names():
-    r"""Return the names of the glaciers for which we have outlines that you
-    can fetch"""
-    return [
-        os.path.splitext(os.path.basename(filename))[0]
-        for filename in outlines.registry.keys()
-    ]
-
-
-def fetch_outline(name):
-    r"""Fetch the outline of a glacier as a GeoJSON file"""
-    names = get_glacier_names()
-    if name not in names:
-        raise ValueError("Glacier name '%s' not in %s" % (name, names))
-    downloader = pooch.HTTPDownloader(progressbar=True)
-    return outlines.fetch(name + ".geojson", downloader=downloader)
-
-
-def fetch_randolph_glacier_inventory(region):
-    r"""Fetch a regional segment of the Randolph Glacier Inventory"""
-    downloader = _earthdata_downloader
-    filenames = nsidc_data.fetch(
-        f"RGI2000-v7.0-G-01_{region}.zip",
-        downloader=_earthdata_downloader,
-        processor=pooch.Unzip(),
-    )
-    return [f for f in filenames if ".shp" in f][0]
+    search = {"short_name": "IDBMG4", "version": "6", "granule_name": "*v*.nc"}
+    return _fetch_nsidc(search)
 
 
 def fetch_mosaic_of_antarctica():
     r"""Fetch the MODIS optical image mosaic of Antarctica"""
-    return nsidc_data.fetch(
-        "moa750_2009_hp1_v02.0.tif.gz",
-        downloader=_earthdata_downloader,
-        processor=pooch.Decompress(),
-    )
+    search = {"short_name": "NSIDC-0593", "version": "2"}
+    filename = "moa750_2009_hp1_v02.0.tif"
+    extra = "geotiff/"
+    processor = pooch.Decompress(name=filename)
+    kw = {"filename": filename + ".gz", "extra": extra, "processor": processor}
+    return _fetch_nsidc(search, **kw)
 
 
 def fetch_mosaic_of_greenland():
     r"""Fetch the MODIS optical image mosaic of Greenland"""
-    return nsidc_data.fetch(
-        "mog100_2015_hp1_v02.tif",
-        downloader=_earthdata_downloader,
-    )
+    search = {"short_name": "NSIDC-0547", "granule_name": "mog100_2015_hp1*.tif"}
+    return _fetch_nsidc(search)
+
+
+def _recursive_unzip(top_level_filename, action, pup):
+    unzipper = pooch.Unzip()
+    filenames = unzipper(top_level_filename, action, pup)
+    results = []
+    for filename in filenames:
+        if pathlib.Path(filename).suffix == ".zip":
+            unzipper = pooch.Unzip()
+            inner_filenames = unzipper(filename, action, pup)
+            results.extend(inner_filenames)
+
+    return [r for r in results if pathlib.Path(r).suffix == ".shp"]
+
+
+def fetch_randolph_glacier_inventory(name=None):
+    search = {"short_name": "NSIDC-0770", "version": "7"}
+    filename = "RGI2000-v7.0-G-global.zip"
+    extra = "global_files/"
+    kw = {"filename": filename, "extra": extra, "processor": _recursive_unzip}
+    all_filenames = _fetch_nsidc(search, **kw)
+    if name is None:
+        return all_filenames
+
+    filenames = [f for f in all_filenames if name in f]
+    if len(filenames) == 0:
+        raise ValueError("`%s` not a valid RGI region!" % name)
+
+    return filenames[0] if len(filenames) == 1 else filenames
+
+
+def get_glacier_names():
+    r"""Return the names of the glaciers we have outlines for"""
+    return [
+        "amery", "filchner-ronne", "getz", "helheim", "hiawatha", "jakobshavn",
+        "larsen-2015", "larsen-2018", "larsen-2019", "pine-island", "ross",
+    ]
+
+
+def fetch_outline(name, commit=None):
+    r"""Fetch the outline of a glacier as a GeoJSON file"""
+    if name not in get_glacier_names():
+        raise ValueError("Glacier name '%s' not in %s" % (name, names))
+
+    default_commit = "5906b7c21d844a982aa012e934fe29b31ef13d41"
+    outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes"
+    url = f"{outlines_url}/{commit or default_commit}/glaciers/{name}.geojson"
+    kw = {"known_hash": None, "path": pooch.os_cache("icepack"), "progressbar": True}
+    return pooch.retrieve(url, fname=f"{name}.geojson", **kw)
