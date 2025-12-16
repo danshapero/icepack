@@ -16,6 +16,7 @@ import os
 from getpass import getpass
 import requests
 import pooch
+import earthaccess
 
 
 pooch.get_logger().setLevel("WARNING")
@@ -58,41 +59,14 @@ class EarthDataDownloader:
 
 
 _earthdata_downloader = EarthDataDownloader()
+_earthaccess_auth = earthaccess.Auth()
 
 _nsidc_url = "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected"
 _daacdata = "https://daacdata.apps.nsidc.org/pub/DATASETS"
 _nsidc_links = {
-    "antarctic_ice_vel_phase_map_v01.nc": (
-        "md5:2e1ca76870a6e67ace309a9850739dc9",
-        f"{_nsidc_url}/MEASURES/NSIDC-0754/1/1996/01/01",
-    ),
-    "BedMachineAntarctica-v3.nc": (
-        "md5:9d6e2e5fdd56a0baf534e1eae0f49070",
-        f"{_nsidc_url}/MEASURES/NSIDC-0756/3/1970/01/01",
-    ),
-    "BedMachineGreenland-v5.nc": (
-        "md5:7387182a059dd8cad66ce7638eb0d7cd",
-        f"{_nsidc_url}/ICEBRIDGE/IDBMG4/5/1993/01/01",
-    ),
     "moa750_2009_hp1_v02.0.tif.gz": (
         "md5:7d386e916cbc072cd3ada4ee3ba145c9",
         f"{_daacdata}/nsidc0593_moa2009_v02/geotiff",
-    ),
-    "greenland_vel_mosaic200_2015_2016_vx_v02.1.tif": (
-        "md5:48bfa5266b6ecf5d4939c306f665ce47",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "greenland_vel_mosaic200_2015_2016_vy_v02.1.tif": (
-        "md5:f68a5bbc76bcbb11b3cfe7a979d64651",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "greenland_vel_mosaic200_2015_2016_ex_v02.1.tif": (
-        "md5:e9e3d01d630533d870d552da023a66ba",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
-    ),
-    "greenland_vel_mosaic200_2015_2016_ey_v02.1.tif": (
-        "md5:1d1b5b0efcdf24218e9f7d75b6750a3d",
-        f"{_nsidc_url}/MEASURES/NSIDC-0478/2/2015/09/01",
     ),
     "RGI2000-v7.0-G-01_alaska.zip": (
         "md5:dcde7c544799aff09ad9ea11616fa003",
@@ -112,38 +86,37 @@ nsidc_data = pooch.create(
 )
 
 
-def fetch_measures_antarctica():
+def _fetch_nsidc(destination=None, **kwargs):
+    earthaccess.login()
+    results = earthaccess.search_data(**kwargs)
+    if not results:
+        raise ValueError(f"No results from Earthdata search for `{kwargs}`!")
+    destination = destination or pooch.os_cache("icepack")
+    return earthaccess.download(results, destination)
+
+
+def fetch_measures_antarctica(destination=None):
     r"""Fetch the MEaSUREs Antarctic velocity map"""
-    return nsidc_data.fetch(
-        "antarctic_ice_vel_phase_map_v01.nc", downloader=_earthdata_downloader
-    )
+    return _fetch_nsidc(destination, short_name="NSIDC-0754")
 
 
-def fetch_measures_greenland():
+def fetch_measures_greenland(destination=None):
     r"""Fetch the MEaSUREs Greenland velocity map"""
-    return [
-        nsidc_data.fetch(
-            f"greenland_vel_mosaic200_2015_2016_{field_name}_v02.1.tif",
-            downloader=_earthdata_downloader,
-        )
-        for field_name in ["vx", "vy", "ex", "ey"]
-    ]
+    criteria = {"granule_name": "greenland_vel_mosaic_200_2015_2016*"}
+    return _fetch_nsidc(destination, short_name="NSIDC-0478", **criteria)
 
 
-def fetch_bedmachine_antarctica():
+def fetch_bedmachine_antarctica(destination=None):
     r"""Fetch the BedMachine map of Antarctic ice thickness, surface elevation,
     and bed elevation"""
-    return nsidc_data.fetch(
-        "BedMachineAntarctica-v3.nc", downloader=_earthdata_downloader
-    )
+    return _fetch_nsidc(destination, short_name="NSIDC-0756")
 
 
-def fetch_bedmachine_greenland():
+def fetch_bedmachine_greenland(destination=None):
     r"""Fetch the BedMachine map of Greenland ice thickness, surface elevation,
     and bed elevation"""
-    return nsidc_data.fetch(
-        "BedMachineGreenland-v5.nc", downloader=_earthdata_downloader
-    )
+    criteria = {"version": "6", "granule_name": "*v*.nc"}
+    return _fetch_nsidc(destination, short_name="IDBMG4", **criteria)
 
 
 _outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes"
@@ -207,7 +180,5 @@ def fetch_mosaic_of_antarctica():
 
 def fetch_mosaic_of_greenland():
     r"""Fetch the MODIS optical image mosaic of Greenland"""
-    return nsidc_data.fetch(
-        "mog100_2015_hp1_v02.tif",
-        downloader=_earthdata_downloader,
-    )
+    criteria = {"granule_name": "mog100_2015_hp1*.tif"}
+    return _fetch_nsidc(short_name="NSIDC-0547", **criteria)
