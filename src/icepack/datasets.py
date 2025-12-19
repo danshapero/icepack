@@ -72,10 +72,6 @@ _nsidc_links = {
         "md5:dcde7c544799aff09ad9ea11616fa003",
         f"{_daacdata}/nsidc0770_rgi_v7/regional_files/RGI2000-v7.0-G",
     ),
-    "mog100_2015_hp1_v02.tif": (
-        "md5:05758adba03f36fc21883c3dba2ee04c",
-        f"{_nsidc_url}/MEASURES/NSIDC-0547/2/2015/03/12",
-    )
 }
 
 nsidc_data = pooch.create(
@@ -117,6 +113,22 @@ def fetch_bedmachine_greenland(destination=None):
     and bed elevation"""
     criteria = {"version": "6", "granule_name": "*v*.nc"}
     return _fetch_nsidc(destination, short_name="IDBMG4", **criteria)
+
+
+def fetch_mosaic_of_antarctica():
+    r"""Fetch the MODIS optical image mosaic of Antarctica"""
+    filename = "moa750_2009_hp1_v02.0.tif"
+    return nsidc_data.fetch(
+        filename + ".gz",
+        downloader=_earthdata_downloader,
+        processor=pooch.Decompress(name=name),
+    )
+
+
+def fetch_mosaic_of_greenland(destination=None):
+    r"""Fetch the MODIS optical image mosaic of Greenland"""
+    criteria = {"granule_name": "mog100_2015_hp1*.tif"}
+    return _fetch_nsidc(destination, short_name="NSIDC-0547", **criteria)
 
 
 _outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes"
@@ -167,18 +179,3 @@ def fetch_randolph_glacier_inventory(region):
         processor=pooch.Unzip(),
     )
     return [f for f in filenames if ".shp" in f][0]
-
-
-def fetch_mosaic_of_antarctica():
-    r"""Fetch the MODIS optical image mosaic of Antarctica"""
-    return nsidc_data.fetch(
-        "moa750_2009_hp1_v02.0.tif.gz",
-        downloader=_earthdata_downloader,
-        processor=pooch.Decompress(),
-    )
-
-
-def fetch_mosaic_of_greenland():
-    r"""Fetch the MODIS optical image mosaic of Greenland"""
-    criteria = {"granule_name": "mog100_2015_hp1*.tif"}
-    return _fetch_nsidc(short_name="NSIDC-0547", **criteria)
