@@ -121,7 +121,7 @@ def fetch_mosaic_of_antarctica():
     return nsidc_data.fetch(
         filename + ".gz",
         downloader=_earthdata_downloader,
-        processor=pooch.Decompress(name=name),
+        processor=pooch.Decompress(name=filename),
     )
 
 
