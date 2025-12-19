@@ -98,7 +98,7 @@ def fetch_measures_antarctica(destination=None):
 
 def fetch_measures_greenland(destination=None):
     r"""Fetch the MEaSUREs Greenland velocity map"""
-    criteria = {"granule_name": "greenland_vel_mosaic_200_2015_2016*"}
+    criteria = {"granule_name": "greenland_vel_mosaic200_2015_2016*"}
     return _fetch_nsidc(destination, short_name="NSIDC-0478", **criteria)
 
 
