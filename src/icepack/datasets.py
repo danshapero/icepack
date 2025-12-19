@@ -13,6 +13,9 @@
 r"""Routines for fetching the glaciological data sets used in the demos"""
 
 import os
+import gzip
+import pathlib
+import shutil
 from getpass import getpass
 import requests
 import pooch
@@ -59,15 +62,9 @@ class EarthDataDownloader:
 
 
 _earthdata_downloader = EarthDataDownloader()
-_earthaccess_auth = earthaccess.Auth()
 
-_nsidc_url = "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected"
 _daacdata = "https://daacdata.apps.nsidc.org/pub/DATASETS"
 _nsidc_links = {
-    "moa750_2009_hp1_v02.0.tif.gz": (
-        "md5:7d386e916cbc072cd3ada4ee3ba145c9",
-        f"{_daacdata}/nsidc0593_moa2009_v02/geotiff",
-    ),
     "RGI2000-v7.0-G-01_alaska.zip": (
         "md5:dcde7c544799aff09ad9ea11616fa003",
         f"{_daacdata}/nsidc0770_rgi_v7/regional_files/RGI2000-v7.0-G",
@@ -115,14 +112,40 @@ def fetch_bedmachine_greenland(destination=None):
     return _fetch_nsidc(destination, short_name="IDBMG4", **criteria)
 
 
-def fetch_mosaic_of_antarctica():
+def fetch_mosaic_of_antarctica(destination=None):
     r"""Fetch the MODIS optical image mosaic of Antarctica"""
+    earthaccess.login()
+    eaauth = earthaccess.__auth__
+    auth = (eaauth.username, eaauth.password)
+
+    # NSIDC does this goofy thing where the URL to download the data isn't the
+    # real one. When you make a `get` request to that URL, it redirects you to
+    # the real URL.
+    results = earthaccess.search_datasets(short_name="NSIDC-0593", version="2")
+    assert len(results) == 1
+    initial_urls = results[0].summary()["get-data"]
+    assert len(initial_urls) == 1
     filename = "moa750_2009_hp1_v02.0.tif"
-    return nsidc_data.fetch(
-        filename + ".gz",
-        downloader=_earthdata_downloader,
-        processor=pooch.Decompress(name=filename),
-    )
+    initial_url = initial_urls[0] + "geotiff/" + filename + ".gz"
+    real_url = requests.get(initial_url).url
+
+    # Download the gzipped image
+    destination = pathlib.Path(destination or pooch.os_cache("icepack"))
+    download_path = destination / pathlib.Path(filename + ".gz")
+    # TODO: progress bar
+    with requests.get(real_url, auth=auth, stream=True) as request:
+        request.raise_for_status()
+        with open(download_path, "wb") as output_file:
+            for chunk in request.iter_content(chunk_size=8192):
+                output_file.write(chunk)
+
+    # Unzip the image
+    result_path = destination / pathlib.Path(filename)
+    with gzip.open(download_path, "rb") as compressed_file:
+        with open(result_path, "wb") as output_file:
+            shutil.copyfileobj(compressed_file, output_file)
+
+    return str(result_path)
 
 
 def fetch_mosaic_of_greenland(destination=None):
