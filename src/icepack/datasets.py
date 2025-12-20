@@ -88,6 +88,31 @@ def _fetch_nsidc(destination=None, **kwargs):
     return earthaccess.download(results, destination)
 
 
+def _fetch_nsidc_v0(search_keys, filename, extra, destination):
+    earthaccess.login()
+    eaauth = earthaccess.__auth__
+    auth = (eaauth.username, eaauth.password)
+
+    # The URL to download the data on NSIDC isn't the real one, when you do a
+    # `get` request it then redirects you to the real URL.
+    results = earthaccess.search_datasets(**search_keys)
+    assert len(results) == 1
+    initial_urls = results[0].summary()["get-data"]
+    assert len(initial_urls) == 1
+    initial_url = initial_urls[0] + extra + filename
+    real_url = requests.get(initial_url).url
+
+    # TODO: progress bar
+    download_path = destination / pathlib.Path(filename)
+    with requests.get(real_url, auth=auth, stream=True) as request:
+        request.raise_for_status()
+        with open(download_path, "wb") as output_file:
+            for chunk in request.iter_content(chunk_size=8192):
+                output_file.write(chunk)
+
+    return str(download_path)
+
+
 def fetch_measures_antarctica(destination=None):
     r"""Fetch the MEaSUREs Antarctic velocity map"""
     return _fetch_nsidc(destination, short_name="NSIDC-0754")
@@ -114,36 +139,18 @@ def fetch_bedmachine_greenland(destination=None):
 
 def fetch_mosaic_of_antarctica(destination=None):
     r"""Fetch the MODIS optical image mosaic of Antarctica"""
-    earthaccess.login()
-    eaauth = earthaccess.__auth__
-    auth = (eaauth.username, eaauth.password)
-
-    # NSIDC does this goofy thing where the URL to download the data isn't the
-    # real one. When you make a `get` request to that URL, it redirects you to
-    # the real URL.
-    results = earthaccess.search_datasets(short_name="NSIDC-0593", version="2")
-    assert len(results) == 1
-    initial_urls = results[0].summary()["get-data"]
-    assert len(initial_urls) == 1
-    filename = "moa750_2009_hp1_v02.0.tif"
-    initial_url = initial_urls[0] + "geotiff/" + filename + ".gz"
-    real_url = requests.get(initial_url).url
-
-    # Download the gzipped image
     destination = pathlib.Path(destination or pooch.os_cache("icepack"))
-    download_path = destination / pathlib.Path(filename + ".gz")
-    # TODO: progress bar
-    with requests.get(real_url, auth=auth, stream=True) as request:
-        request.raise_for_status()
-        with open(download_path, "wb") as output_file:
-            for chunk in request.iter_content(chunk_size=8192):
-                output_file.write(chunk)
+
+    search = {"short_name": "NSIDC-0593", "version": "2"}
+    filename = "moa750_2009_hp1_v02.0.tif"
+    extra = "geotiff/"
+    gz_filename = _fetch_nsidc_v0(search, filename + ".gz", extra, destination)
 
     # Unzip the image
     result_path = destination / pathlib.Path(filename)
-    with gzip.open(download_path, "rb") as compressed_file:
+    with gzip.open(gz_filename, "rb") as gz_file:
         with open(result_path, "wb") as output_file:
-            shutil.copyfileobj(compressed_file, output_file)
+            shutil.copyfileobj(gz_file, output_file)
 
     return str(result_path)
 
