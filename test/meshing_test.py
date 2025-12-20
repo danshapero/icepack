@@ -10,6 +10,7 @@
 # The full text of the license can be found in the file LICENSE in the
 # icepack source directory or at <http://www.gnu.org/licenses/>.
 
+import os
 import firedrake
 import geojson
 import geopandas
@@ -108,7 +109,16 @@ def test_meshing_real_outlines(tmp_path):
         assert mesh.num_cells() > 0
 
 
-@pytest.mark.skip(reason="EarthData auth required")
+try:
+    earthdata_username = os.environ["EARTHDATA_USERNAME"]
+    earthdata_password = os.environ["EARTHDATA_PASSWORD"]
+    earthdata_auth = True
+except KeyError:
+    earthdata_auth = False
+
+
+reason = "Need EARTHDATA_USERNAME and EARTHDATA_PASSWORD environment variables"
+@pytest.mark.skipif(not earthdata_auth, reason=reason)
 def test_meshing_rgi_polygon(tmp_path):
     rgi_filename = icepack.datasets.fetch_randolph_glacier_inventory("alaska")
     dataframe = geopandas.read_file(rgi_filename)
@@ -120,6 +130,6 @@ def test_meshing_rgi_polygon(tmp_path):
     outline = geojson.utils.map_tuples(lambda x: x[:2], outline_json)
 
     msh_filename = f"{tmp_path}/gulkana.msh"
-    icepack.meshing.collection_to_msh(outline).write(msh_filename)
+    icepack.meshing.collection_to_gmsh(outline).write(msh_filename)
     mesh = firedrake.Mesh(msh_filename)
     assert mesh.num_cells() > 0
