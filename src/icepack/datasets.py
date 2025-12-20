@@ -22,63 +22,6 @@ import pooch
 import earthaccess
 
 
-pooch.get_logger().setLevel("WARNING")
-
-
-class EarthDataDownloader:
-    def __init__(self):
-        self._username = None
-        self._password = None
-
-    def _get_credentials(self):
-        if self._username is None:
-            username_env = os.environ.get("EARTHDATA_USERNAME")
-            if username_env is None:
-                self._username = input("EarthData username: ")
-            else:
-                self._username = username_env
-
-        if self._password is None:
-            password_env = os.environ.get("EARTHDATA_PASSWORD")
-            if password_env is None:
-                self._password = getpass("EarthData password: ")
-            else:
-                self._password = password_env
-
-        return self._username, self._password
-
-    def __call__(self, url, output_file, dataset):
-        auth = self._get_credentials()
-        downloader = pooch.HTTPDownloader(auth=auth, progressbar=True)
-        try:
-            login = requests.get(url)
-            downloader(login.url, output_file, dataset)
-        except requests.exceptions.HTTPError as error:
-            if "Unauthorized" in str(error):
-                pooch.get_logger().error("Wrong username/password!")
-                self._username = None
-                self._password = None
-            raise error
-
-
-_earthdata_downloader = EarthDataDownloader()
-
-_daacdata = "https://daacdata.apps.nsidc.org/pub/DATASETS"
-_nsidc_links = {
-    "RGI2000-v7.0-G-01_alaska.zip": (
-        "md5:dcde7c544799aff09ad9ea11616fa003",
-        f"{_daacdata}/nsidc0770_rgi_v7/regional_files/RGI2000-v7.0-G",
-    ),
-}
-
-nsidc_data = pooch.create(
-    path=pooch.os_cache("icepack"),
-    base_url="",
-    registry={name: md5sum for name, (md5sum, url) in _nsidc_links.items()},
-    urls={name: f"{url}/{name}" for name, (md5sum, url) in _nsidc_links.items()},
-)
-
-
 def _fetch_nsidc(destination=None, **kwargs):
     earthaccess.login()
     results = earthaccess.search_data(**kwargs)
@@ -140,7 +83,6 @@ def fetch_bedmachine_greenland(destination=None):
 def fetch_mosaic_of_antarctica(destination=None):
     r"""Fetch the MODIS optical image mosaic of Antarctica"""
     destination = pathlib.Path(destination or pooch.os_cache("icepack"))
-
     search = {"short_name": "NSIDC-0593", "version": "2"}
     filename = "moa750_2009_hp1_v02.0.tif"
     extra = "geotiff/"
@@ -159,6 +101,16 @@ def fetch_mosaic_of_greenland(destination=None):
     r"""Fetch the MODIS optical image mosaic of Greenland"""
     criteria = {"granule_name": "mog100_2015_hp1*.tif"}
     return _fetch_nsidc(destination, short_name="NSIDC-0547", **criteria)
+
+
+def fetch_randolph_glacier_inventory(destination=None):
+    r"""Fetch the Alaska segment of the Randolph Glacier Inventory"""
+    destination = pathlib.Path(destination or pooch.os_cache("icepack"))
+    search = {"short_name": "NSIDC-0770", "version": "7"}
+    filename = f"RGI2000-v7.0-G-01_alaska.zip"
+    extra = "regional_files/RGI2000-v7.0-G/"
+    zip_filename = _fetch_nsidc_v0(search, filename, extra, destination)
+    return zip_filename
 
 
 _outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes"
@@ -198,14 +150,3 @@ def fetch_outline(name):
         raise ValueError("Glacier name '%s' not in %s" % (name, names))
     downloader = pooch.HTTPDownloader(progressbar=True)
     return outlines.fetch(name + ".geojson", downloader=downloader)
-
-
-def fetch_randolph_glacier_inventory(region):
-    r"""Fetch a regional segment of the Randolph Glacier Inventory"""
-    downloader = _earthdata_downloader
-    filenames = nsidc_data.fetch(
-        f"RGI2000-v7.0-G-01_{region}.zip",
-        downloader=_earthdata_downloader,
-        processor=pooch.Unzip(),
-    )
-    return [f for f in filenames if ".shp" in f][0]
