@@ -38,32 +38,19 @@ def _fetch_nsidc(search={}, **kwargs):
     }
 
     earthaccess.login()
-    results = earthaccess.search_data(**search)
-    if not results:
-        raise ValueError(f"No results from Earthdata search for `{kwargs}`!")
+    try:
+        extra = kwargs["extra"]
+        filename = kwargs["filename"]
+        results = earthaccess.search_datasets(**search)
+        urls = [results[0].summary()["get-data"][0] + extra + filename]
+    except KeyError:
+        results = earthaccess.search_data(**search)
+        urls = results[0].data_links()
 
     filenames = [
-        pooch.retrieve(link, fname=pathlib.Path(link).name, **kw)
-        for link in results[0].data_links()
+        pooch.retrieve(url, fname=pathlib.Path(url).name, **kw) for url in urls
     ]
     return filenames[0] if len(filenames) == 1 else filenames
-
-
-def _fetch_nsidc_v0(search, filename, extra, **kwargs):
-    earthaccess.login()
-    results = earthaccess.search_datasets(**search)
-    assert len(results) == 1
-    urls = results[0].summary()["get-data"]
-    assert len(urls) == 1
-    url = urls[0] + extra + filename
-
-    kw = {
-        "known_hash": None,
-        "path": pooch.os_cache("icepack"),
-        "downloader": EarthdataDownloader(),
-        "processor": kwargs.pop("processor", None),
-    }
-    return pooch.retrieve(url, fname=filename, **kw)
 
 
 def fetch_measures_antarctica():
@@ -96,7 +83,8 @@ def fetch_mosaic_of_antarctica():
     filename = "moa750_2009_hp1_v02.0.tif"
     extra = "geotiff/"
     processor = pooch.Decompress(name=filename)
-    return _fetch_nsidc_v0(search, filename + ".gz", extra, processor=processor)
+    kw = {"filename": filename + ".gz", "extra": extra, "processor": processor}
+    return _fetch_nsidc(search, **kw)
 
 
 def fetch_mosaic_of_greenland():
@@ -105,19 +93,18 @@ def fetch_mosaic_of_greenland():
     return _fetch_nsidc(search)
 
 
-def fetch_randolph_glacier_inventory():
+def fetch_randolph_glacier_inventory(*args, **kwargs):
     r"""Fetch the Alaska segment of the Randolph Glacier Inventory"""
     search = {"short_name": "NSIDC-0770", "version": "7"}
     filename = "RGI2000-v7.0-G-01_alaska.zip"
     extra = "regional_files/RGI2000-v7.0-G/"
-    processor = pooch.Unzip()
-    filenames = _fetch_nsidc_v0(search, filename, extra, processor=processor)
+    kw = {"filename": filename, "extra": extra, "processor": pooch.Unzip()}
+    filenames = _fetch_nsidc(search, **kw)
     return [f for f in filenames if pathlib.Path(f).suffix == ".shp"][0]
 
 
 def get_glacier_names():
-    r"""Return the names of the glaciers for which we have outlines that you
-    can fetch"""
+    r"""Return the names of the glaciers we have outlines for"""
     return [
         "amery", "filchner-ronne", "getz", "helheim", "hiawatha", "jakobshavn",
         "larsen-2015", "larsen-2018", "larsen-2019", "pine-island", "ross",
@@ -132,5 +119,5 @@ def fetch_outline(name, commit=None):
     default_commit = "5906b7c21d844a982aa012e934fe29b31ef13d41"
     outlines_url = "https://raw.githubusercontent.com/icepack/glacier-meshes"
     url = f"{outlines_url}/{commit or default_commit}/glaciers/{name}.geojson"
-    kw = {"known_hash": None, "path": pooch.os_cache("icepack")}
+    kw = {"known_hash": None, "path": pooch.os_cache("icepack"), "progressbar": True}
     return pooch.retrieve(url, fname=f"{name}.geojson", **kw)

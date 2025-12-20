@@ -23,6 +23,7 @@ def test_fetching_data():
         "mosaic_of_greenland",
     ]
     for function_name in function_names:
+        print(function_name)
         fn = getattr(icepack.datasets, "fetch_" + function_name)
         filenames = fn()
         assert filenames
