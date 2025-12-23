@@ -23,6 +23,7 @@ pooch.get_logger().setLevel("WARNING")
 
 class EarthdataDownloader:
     def __call__(self, url, output_file, dataset):
+        earthaccess.login()
         eaauth = earthaccess.__auth__
         auth = (eaauth.username, eaauth.password)
         downloader = pooch.HTTPDownloader(auth=auth, progressbar=True)
@@ -37,7 +38,6 @@ def _fetch_nsidc(search={}, **kwargs):
         "processor": kwargs.pop("processor", None),
     }
 
-    earthaccess.login()
     try:
         extra = kwargs["extra"]
         filename = kwargs["filename"]
