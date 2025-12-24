@@ -21,6 +21,7 @@ def test_fetching_data():
         "bedmachine_greenland",
         "mosaic_of_antarctica",
         "mosaic_of_greenland",
+        "randolph_glacier_inventory",
     ]
     for function_name in function_names:
         print(function_name)

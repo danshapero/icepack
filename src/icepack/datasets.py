@@ -93,14 +93,33 @@ def fetch_mosaic_of_greenland():
     return _fetch_nsidc(search)
 
 
-def fetch_randolph_glacier_inventory(*args, **kwargs):
-    r"""Fetch the Alaska segment of the Randolph Glacier Inventory"""
+def _recursive_unzip(top_level_filename, action, pup):
+    unzipper = pooch.Unzip()
+    filenames = unzipper(top_level_filename, action, pup)
+    results = []
+    for filename in filenames:
+        if pathlib.Path(filename).suffix == ".zip":
+            unzipper = pooch.Unzip()
+            inner_filenames = unzipper(filename, action, pup)
+            results.extend(inner_filenames)
+
+    return [r for r in results if pathlib.Path(r).suffix == ".shp"]
+
+
+def fetch_randolph_glacier_inventory(name=None):
     search = {"short_name": "NSIDC-0770", "version": "7"}
-    filename = "RGI2000-v7.0-G-01_alaska.zip"
-    extra = "regional_files/RGI2000-v7.0-G/"
-    kw = {"filename": filename, "extra": extra, "processor": pooch.Unzip()}
-    filenames = _fetch_nsidc(search, **kw)
-    return [f for f in filenames if pathlib.Path(f).suffix == ".shp"][0]
+    filename = "RGI2000-v7.0-G-global.zip"
+    extra = "global_files/"
+    kw = {"filename": filename, "extra": extra, "processor": _recursive_unzip}
+    all_filenames = _fetch_nsidc(search, **kw)
+    if name is None:
+        return all_filenames
+
+    filenames = [f for f in all_filenames if name in f]
+    if len(filenames) == 0:
+        raise ValueError("`%s` not a valid RGI region!" % name)
+
+    return filenames[0] if len(filenames) == 1 else filenames
 
 
 def get_glacier_names():
