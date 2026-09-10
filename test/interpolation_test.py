@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import pi as π
+from scipy.stats.qmc import PoissonDisk
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import firedrake
@@ -35,9 +36,13 @@ nx = 32
 mesh = firedrake.UnitSquareMesh(nx, nx, diagonal="crossed")
 
 # Make a point cloud and some synthetic observations
-xs = np.array([[1/3, 1/3], [2/3, 1/3], [2/3, 2/3], [1/3, 2/3]])
+rng = np.random.default_rng(seed=1729)
+radius = 0.1
+sampler = PoissonDisk(2, radius=radius, rng=rng)
+xs = sampler.fill_space()
 point_cloud = firedrake.VertexOnlyMesh(mesh, xs, reorder=False)
 raw_data = true_field(xs)
+print(f"Number of samples: {len(raw_data)}")
 
 # Make function spaces on the mesh and the point cloud
 Q = firedrake.FunctionSpace(mesh, "CG", 1)
@@ -58,7 +63,8 @@ with p_obs.dat.vec_ro as P_obs:
     I.multTranspose(P_obs, F)
 
 # Make the regularization matrix
-R = 0.5 * inner(grad(p), grad(p)) * dx
+α = Constant(0.1)
+R = 0.5 * α**2 * inner(grad(p), grad(p)) * dx
 A = assemble(derivative(derivative(R, p), p)).M.handle
 
 # Form the matrix product `tranpose(I) * I`
@@ -78,7 +84,8 @@ with p.dat.vec as P:
     ksp.solve(F, P)
 
 fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-firedrake.trisurf(p, axes=ax)
+firedrake.trisurf(p, axes=ax, alpha=0.5)
+ax.scatter(*xs.T, raw_data)
 plt.show()
 
 x = firedrake.SpatialCoordinate(mesh)
