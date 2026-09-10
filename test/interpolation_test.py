@@ -49,7 +49,7 @@ p_obs.dat.data[:] = raw_data
 
 # Make the operator that interpolates functions on the mesh to the point cloud
 q = firedrake.TrialFunction(Q)
-I = assemble(interpolate(q, D)).mat()
+I = assemble(interpolate(q, D)).M.handle
 assert I.getSize() == (len(xs), Q.dim())
 
 # Make the right-hand side
