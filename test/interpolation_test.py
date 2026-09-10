@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import firedrake
 from firedrake import (
-    Constant, interpolate, inner, grad, dx, assemble, derivative, avg, jump
+    Constant, interpolate, inner, dot, grad, dx, ds, dS, assemble, derivative, avg, jump
 )
 from firedrake.petsc import PETSc
 
@@ -46,26 +46,33 @@ print(f"Number of samples: {len(raw_data)}")
 
 # Make function spaces on the mesh and the point cloud
 Q = firedrake.FunctionSpace(mesh, "CG", 1)
-p = firedrake.Function(Q)
+S = firedrake.FunctionSpace(mesh, "HHJ", 0)
+Z = Q * S
 
 D = firedrake.FunctionSpace(point_cloud, "DG", 0)
 p_obs = firedrake.Function(D)
 p_obs.dat.data[:] = raw_data
 
 # Make the operator that interpolates functions on the mesh to the point cloud
-q = firedrake.TrialFunction(Q)
+q, _ = firedrake.TrialFunctions(Z)
 I = assemble(interpolate(q, D)).M.handle
-assert I.getSize() == (len(xs), Q.dim())
+assert I.getSize() == (len(xs), Z.dim())
 
 # Make the right-hand side
-F = PETSc.Vec().createSeq(Q.dim())
+F = PETSc.Vec().createSeq(Z.dim())
 with p_obs.dat.vec_ro as P_obs:
     I.multTranspose(P_obs, F)
 
 # Make the regularization matrix
-α = Constant(0.1)
-R = 0.5 * α**2 * inner(grad(p), grad(p)) * dx
-A = assemble(derivative(derivative(R, p), p)).M.handle
+w = firedrake.Function(Z)
+p, s = firedrake.split(w)
+α = Constant(1 / 64)
+ν = firedrake.FacetNormal(mesh)
+R_cells = (0.5 * inner(s, s) - inner(s, grad(grad(p)))) * dx
+R_facets = avg(inner(ν, dot(s, ν))) * jump(grad(p), ν) * dS
+R_boundary = inner(ν, dot(s, ν)) * inner(grad(p), ν) * ds
+R = -α**2 * (R_cells + R_facets + R_boundary)
+A = assemble(derivative(derivative(R, w), w)).M.handle
 
 # Form the matrix product `tranpose(I) * I`
 It = PETSc.Mat().createTranspose(I)
@@ -80,8 +87,10 @@ ksp = PETSc.KSP().create()
 ksp.setOperators(H)
 ksp.setFromOptions()
 
-with p.dat.vec as P:
-    ksp.solve(F, P)
+with w.dat.vec as W:
+    ksp.solve(F, W)
+
+p, s = w.subfunctions
 
 fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 firedrake.trisurf(p, axes=ax, alpha=0.5)
