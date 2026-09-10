@@ -85,6 +85,9 @@ H.axpy(1.0, IIt)
 # Solve the linear system
 ksp = PETSc.KSP().create()
 ksp.setOperators(H)
+pc = ksp.getPC()
+pc.setType("lu")
+pc.setFactorSolverType("mumps")
 ksp.setFromOptions()
 
 with w.dat.vec as W:
