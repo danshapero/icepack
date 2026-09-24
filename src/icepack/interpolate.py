@@ -1,4 +1,4 @@
-# Copyright (C) 2017-2024 by Daniel Shapero <shapero@uw.edu> and David
+# Copyright (C) 2017-2026 by Daniel Shapero <shapero@uw.edu> and David
 # Lilien
 #
 # This file is part of icepack.
@@ -18,10 +18,13 @@ from functools import singledispatch
 from collections.abc import Sequence
 import numpy as np
 import ufl
-import firedrake
 import rasterio
 import xarray
 from scipy.interpolate import RegularGridInterpolator
+import firedrake
+from firedrake import (
+    inner, dot, grad, dx, ds, dS, avg, jump, action, adjoint, derivative
+)
 
 
 @singledispatch
@@ -111,3 +114,81 @@ def interpolate(f, Q, **kwargs):
     q = firedrake.Function(Q)
     q.dat.data[:] = _sample(f, X, **kwargs)
     return q
+
+
+def fit(data, stddev, smoothing_length, Q, **kwargs):
+    r"""Fit a data set to a function defined on some mesh. The data do not
+    have to be dense. The fit will not (in general) be exact.
+
+    Parameters
+    ----------
+    data : firedrake.Function
+        The observational data, defined on a VertexOnlyMesh
+    stddev : firedrake.Function or firedrake.Constant
+        The standard deviation of the measurement errors, defined on the same
+        point cloud as the observational data.
+        Should have the same physical units as the data themselves.
+    smoothing_length : float
+        A length scale determining how far to smooth the fitted field
+    Q : firedrake.FunctionSpace
+        The function space where the resulting field should live. Must be
+        defined on a triangular mesh with Lagrange elements.
+
+    Returns
+    -------
+    firedrake.Function
+        A finite element function defined on `Q`
+
+    Notes
+    -----
+    This is an experimental feature which only just barely works with some
+    low-level hackery. It will be overhauled pending some changes to Firedrake.
+    Use at your own risk.
+    """
+    mesh = Q.mesh()
+    if str(cell := mesh.ufl_cell()) != "triangle":
+        raise NotImplementedError(
+            f"Can't do fitting on {cell} meshes, only triangle!"
+        )
+
+    element = Q.ufl_element()
+    if (family := element.family()) != "Lagrange":
+        raise NotImplementedError(
+            f"Can't do fitting into {cell} elements, only Lagrange!"
+        )
+
+    hhj = firedrake.FiniteElement("HHJ", "triangle", element.degree() - 1)
+    S = firedrake.FunctionSpace(mesh, hhj)
+    Z = S * Q
+    z = firedrake.Function(Z)
+    s, p = firedrake.split(z)
+
+    # Make the regularization matrix
+    α = firedrake.Constant(smoothing_length)
+    n = firedrake.FacetNormal(mesh)
+    L_cells = (α**2 * inner(s, grad(grad(p))) - 0.5 * inner(s, s)) * dx
+    L_facets = α**2 * avg(inner(n, dot(s, n))) * jump(grad(p), n) * dS
+    L_boundary = α**2 * inner(n, dot(s, n)) * inner(grad(p), n) * ds
+    L = L_cells - L_facets - L_boundary
+    A = derivative(derivative(L, z), z)
+
+    # Make the map that interpolates functions on the mesh into the point cloud
+    D = data.function_space()
+    _, q = firedrake.TrialFunctions(Z)
+    I = firedrake.interpolate(q, D)
+
+    # The (inverse) covariance matrix, on the point cloud. Weights all the
+    # observations by the reciprocal of the variance.
+    q, r = firedrake.TestFunction(D), firedrake.TrialFunction(D)
+    Σ = q * r / stddev**2 * dx
+
+    # The "gain matrix" K does a round trip from the mesh to the point cloud
+    # and back. TODO: Patch Firedrake so we don't need this awful hackery
+    kw = {"allocation_integral_types": ("cell",)}
+    K = firedrake.assemble(action(adjoint(I), action(Σ, I)), **kw)
+
+    H = firedrake.assemble(A + K)
+    F = firedrake.assemble(action(adjoint(I), action(Σ, data)))
+
+    firedrake.solve(H, z, F)
+    return z.subfunctions[1]
