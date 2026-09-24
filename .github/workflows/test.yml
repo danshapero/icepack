@@ -4,7 +4,7 @@ jobs:
   test:
     strategy:
       matrix:
-        version: [2026.4.0, 2026.4.2]
+        version: [2026.4.2, dev-release]
     runs-on: ubuntu-latest
     container:
       image: docker.io/firedrakeproject/firedrake-vanilla-default:${{ matrix.version }}
