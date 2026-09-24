@@ -21,6 +21,7 @@ import ufl
 import rasterio
 import xarray
 from scipy.interpolate import RegularGridInterpolator
+from petsc4py import PETSc
 import firedrake
 from firedrake import (
     inner, dot, grad, dx, ds, dS, avg, jump, action, adjoint, derivative
@@ -182,13 +183,28 @@ def fit(data, stddev, smoothing_length, Q, **kwargs):
     q, r = firedrake.TestFunction(D), firedrake.TrialFunction(D)
     Σ = q * r / stddev**2 * dx
 
-    # The "gain matrix" K does a round trip from the mesh to the point cloud
-    # and back. TODO: Patch Firedrake so we don't need this awful hackery
-    kw = {"allocation_integral_types": ("cell",)}
-    K = firedrake.assemble(action(adjoint(I), action(Σ, I)), **kw)
+    # Assemble everything as a PETSc matrix. The "gain matrix" K is a round-
+    # trip from the mesh to the point cloud and back. We have to do this at a
+    # low level right now because Firedrake can't represent that operator
+    # symbolically.
+    A_ = firedrake.assemble(A).M.handle
+    Σ_ = firedrake.assemble(Σ).M.handle
+    I_ = firedrake.assemble(I).M.handle
+    H = A_.copy()
 
-    H = firedrake.assemble(A + K)
+    K = Σ_.ptap(I_)
+    H.axpy(1.0, K)
+
+    ksp = PETSc.KSP().create(comm=firedrake.COMM_WORLD)
+    ksp.setType("preonly")
+    pc = ksp.getPC()
+    pc.setType("lu")
+    pc.setFactorSolverType("mumps")
+    ksp.setOperators(H)
+
     F = firedrake.assemble(action(adjoint(I), action(Σ, data)))
+    with F.dat.vec_ro as f_:
+        with z.dat.vec as z_:
+            ksp.solve(f_, z_)
 
-    firedrake.solve(H, z, F)
     return z.subfunctions[1]
