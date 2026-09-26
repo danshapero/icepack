@@ -23,7 +23,7 @@ import xarray
 from scipy.interpolate import RegularGridInterpolator
 import firedrake
 from firedrake import (
-    inner, dot, grad, dx, ds, dS, avg, jump, action, adjoint, derivative
+    Constant, inner, dot, grad, dx, ds, dS, avg, jump, action, adjoint, derivative
 )
 from petsc4py import PETSc
 
@@ -170,13 +170,16 @@ def fit(data, stddev, smoothing_length, Q, **kwargs):
     z = firedrake.Function(Z)
     s, p = firedrake.split(z)
 
-    # Make the regularization matrix
-    α = firedrake.Constant(smoothing_length)
+    # TODO: Check the boundary conditions here. In the limit of large smoothing
+    # length, we should get back the least-squares fit of a plane.
+    α = Constant(smoothing_length)
+    area = firedrake.assemble(Constant(1.0) * dx(domain=mesh))
+    Ω = Constant(area)
     n = firedrake.FacetNormal(mesh)
-    L_cells = (α**2 * inner(s, grad(grad(p))) - 0.5 * inner(s, s)) * dx
-    L_facets = α**2 * avg(inner(n, dot(s, n))) * jump(grad(p), n) * dS
-    L_boundary = α**2 * inner(n, dot(s, n)) * inner(grad(p), n) * ds
-    L = L_cells - L_facets - L_boundary
+    L_cells = (inner(s, grad(grad(p))) - 0.5 * inner(s, s)) * dx
+    L_facets = avg(inner(n, dot(s, n))) * jump(grad(p), n) * dS
+    L_boundary = inner(n, dot(s, n)) * inner(grad(p), n) * ds
+    L = α**4 / Ω * (L_cells - L_facets - L_boundary)
     A = derivative(derivative(L, z), z)
 
     # Make the map that interpolates functions on the mesh into the point cloud
@@ -184,10 +187,13 @@ def fit(data, stddev, smoothing_length, Q, **kwargs):
     _, q = firedrake.TrialFunctions(Z)
     I = firedrake.interpolate(q, D)
 
-    # The (inverse) covariance matrix, on the point cloud. Weights all the
-    # observations by the reciprocal of the variance.
+    # The (inverse) covariance matrix, on the point cloud. Weights each
+    # observation by the reciprocal of the variance. The sum is normalized
+    # by the total rms variance, which makes the misfit a weighted mean.
+    total_precision = firedrake.assemble(1 / stddev**2 * dx(domain=D.mesh()))
+    Π = Constant(1 / np.sqrt(total_precision))
     q, r = firedrake.TestFunction(D), firedrake.TrialFunction(D)
-    Σ = q * r / stddev**2 * dx
+    Σ = Π * q * r / stddev**2 * dx
 
     # The "gain matrix" K does a round trip from the mesh to the point cloud
     # and back. TODO: Patch Firedrake so we don't need this awful hackery
