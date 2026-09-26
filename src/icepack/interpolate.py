@@ -208,5 +208,12 @@ def fit(data, stddev, smoothing_length, Q, **kwargs):
     H = firedrake.assemble(A + K)
     F = firedrake.assemble(action(adjoint(I), action(Σ, data)))
 
-    firedrake.solve(H, z, F)
+    default_sparams = {
+        "snes_type": "ksponly",
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "pc_factor_mat_solver_type": "mumps",
+    }
+    sparams = kwargs.get("solver_parameters", default_sparams)
+    firedrake.solve(H, z, F, solver_parameters=sparams)
     return z.subfunctions[1]
